@@ -3,8 +3,9 @@ import cv2
 
 
 class Camera:
-    def __init__(self, video_src: int) -> None:
+    def __init__(self, video_src: int, prevent_flip: bool = False) -> None:
         self.video_src = video_src
+        self.prevent_flip = prevent_flip
         if self.video_src is None:
             print("Video source not assigned, default webcam will be used")
             self.video_src = 0
@@ -19,7 +20,7 @@ class Camera:
     def get_frame(self) -> tuple[bool, np.ndarray]:
         frame_got, frame = self.cap.read()
         # If the frame comes from webcam, flip it so it looks like a mirror
-        if isinstance(self.video_src, int):
+        if not self.prevent_flip and isinstance(self.video_src, int):
             frame = cv2.flip(frame, 2)
         return frame_got, frame
 

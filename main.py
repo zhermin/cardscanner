@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from argparse import ArgumentParser
 import time
+from collections import defaultdict
 
 # Custom Libraries
 from Camera import Camera
@@ -26,11 +27,14 @@ PARAMS = {
     "OTSU_threshold_max": 255,
     "houghlines_threshold": 100,  # minimum intersections to detect a line, 130
     "houghlines_min_line_length": 50,  # minimum length of a line, 80
-    "houghlines_max_line_gap": 20,  # maximum gap between two points to form a line, 10
-    "area_detection_ratio": 0.2,  # ratio of the detection area to the image area
-    "min_length_ratio": 0.7,  # ratio of lines to detect to the image edges
+    "houghlines_max_line_gap": 50,  # maximum gap between two points to form a line, 10
+    "area_detection_ratio": 0.1,  # ratio of the detection area to the image area
+    "min_length_ratio": 0.9,  # ratio of lines to detect to the image edges
     "angle_threshold": 10,  # in degrees, 5
 }
+
+DRAW_FOUND_LINES = True
+RUNTIMES = defaultdict(list)
 
 
 def parse_args():
@@ -44,6 +48,7 @@ def parse_args():
 def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
     """Apply a rectangle mask to capture only a portion of the image"""
 
+    t0 = cv2.getTickCount()
     maskW, maskH = PARAMS["mask_aspect_ratio"]
     maskW, maskH = (
         int(camW * PARAMS["frame_scaling_factor"]),
@@ -56,11 +61,16 @@ def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
         int(camW / 2 - maskW / 2) : int(camW / 2 + maskW / 2),
     ] = 0
     mask_area = mask.astype(bool)
+    get_runtime("- Create Mask", t0)
 
+    t0 = cv2.getTickCount()
     masked_frame = img.copy()
     masked_frame[mask_area] = cv2.addWeighted(
         img, 1 - PARAMS["mask_alpha"], mask, PARAMS["mask_alpha"], gamma=0
     )[mask_area]
+    get_runtime("- Apply Mask", t0)
+
+    t0 = cv2.getTickCount()
     img = img[
         int(camH / 2 - maskH / 2) : int(camH / 2 + maskH / 2),
         int(camW / 2 - maskW / 2) : int(camW / 2 + maskW / 2),
@@ -68,6 +78,7 @@ def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
     img = cv2.resize(
         img, (PARAMS["max_size"], int(PARAMS["max_size"] / img.shape[1] * img.shape[0]))
     )
+    get_runtime("- Crop/Scale Image", t0)
 
     return img, masked_frame
 
@@ -103,7 +114,7 @@ def process_image(img: np.ndarray) -> np.ndarray:
     return img
 
 
-def find_lines(img: np.ndarray, draw_found_lines: bool = True) -> tuple[np.ndarray]:
+def find_lines(img: np.ndarray) -> tuple[np.ndarray]:
     """Find the lines in the binarized image"""
 
     imgH, imgW = img.shape
@@ -118,16 +129,16 @@ def find_lines(img: np.ndarray, draw_found_lines: bool = True) -> tuple[np.ndarr
     region_top = img[:detectionH, :]
     region_bottom = img[imgH - detectionH :, :]
 
-    regions_preview = np.zeros((imgH, imgW, 3), np.uint8)
-    regions_preview[:, :detectionW] = cv2.cvtColor(region_left, cv2.COLOR_GRAY2BGR)
-    regions_preview[:, imgW - detectionW :] = cv2.cvtColor(
-        region_right, cv2.COLOR_GRAY2BGR
-    )
-    regions_preview[:detectionH, :] = cv2.cvtColor(region_top, cv2.COLOR_GRAY2BGR)
-    regions_preview[imgH - detectionH :, :] = cv2.cvtColor(
-        region_bottom, cv2.COLOR_GRAY2BGR
-    )
-    # cv2.imshow("All Regions", regions_preview)
+    if DRAW_FOUND_LINES:
+        regions_preview = np.zeros((imgH, imgW, 3), np.uint8)
+        regions_preview[:, :detectionW] = cv2.cvtColor(region_left, cv2.COLOR_GRAY2BGR)
+        regions_preview[:, imgW - detectionW :] = cv2.cvtColor(
+            region_right, cv2.COLOR_GRAY2BGR
+        )
+        regions_preview[:detectionH, :] = cv2.cvtColor(region_top, cv2.COLOR_GRAY2BGR)
+        regions_preview[imgH - detectionH :, :] = cv2.cvtColor(
+            region_bottom, cv2.COLOR_GRAY2BGR
+        )
 
     # Use Probabilistic Hough Transform to find lines in the image
     get_houghlines = lambda region: cv2.HoughLinesP(
@@ -145,7 +156,7 @@ def find_lines(img: np.ndarray, draw_found_lines: bool = True) -> tuple[np.ndarr
     )
 
     # Draw the found lines on a blank image to check if correctly found
-    if draw_found_lines:
+    if DRAW_FOUND_LINES:
         if lines_left is not None and lines_left.any():
             for line in lines_left:
                 for x1, y1, x2, y2 in line:
@@ -175,6 +186,9 @@ def find_lines(img: np.ndarray, draw_found_lines: bool = True) -> tuple[np.ndarr
                         2,
                     )
 
+    if not DRAW_FOUND_LINES:
+        regions_preview = None
+
     return regions_preview, lines_left, lines_right, lines_top, lines_bottom
 
 
@@ -195,7 +209,10 @@ def check_lines(lines: np.ndarray, min_length: int, is_vertical: bool) -> bool:
             if x1 == x2:
                 return True
 
-            angle = np.arctan2(height, width)
+            angle = np.arctan2(height, width) * 180 / np.pi
+            print(
+                f"{'Vertical' if is_vertical else 'Horizontal'}, Angle: {angle:.2f}deg, Width: {width}, Height: {height}, Min Length: {min_length}"
+            )
             if is_vertical:
                 if abs(90 - angle) < PARAMS["angle_threshold"]:
                     return True
@@ -218,42 +235,69 @@ def draw_text(image: np.ndarray, label: str, coords: tuple[int] = (50, 50)) -> N
     )
 
 
+def get_runtime(name: str, t0: float) -> None:
+    """Print the runtime of the function in milliseconds"""
+    t1 = cv2.getTickCount()
+    runtime = (t1 - t0) / cv2.getTickFrequency() * 1000
+    RUNTIMES[name].append(runtime)
+
+
 def main() -> None:
+    app_name = "Card Scanner"
+    print(f"Initialized {app_name}")
+
     # Initialise FPS timings
     prev_frame_time, cur_frame_time = 0, 0
 
     # Initialise the video capturing object
-    cam = Camera(1)
+    t0 = cv2.getTickCount()
+    cam = Camera(1, prevent_flip=True)
     camH, camW = cam.get_frame_size()
+    get_runtime("Initialize Camera", t0)
 
     while True:
+        t0 = cv2.getTickCount()
         frame_got, frame = cam.get_frame()
         if not frame_got:
             print("Failed to get frame from camera")
             break
+        get_runtime("Read Frame", t0)
 
         # Crop and scale down the image
+        t0 = cv2.getTickCount()
         img, masked_frame = mask_video(frame, camH, camW)
-        img = process_image(img)
-        imgH, imgW = img.shape
+        get_runtime("Mask Video", t0)
 
+        t0 = cv2.getTickCount()
+        img = process_image(img)
+        get_runtime("Process Image", t0)
+
+        t0 = cv2.getTickCount()
         regions_preview, lines_left, lines_right, lines_top, lines_bottom = find_lines(
             img
         )
+        get_runtime("Find Lines", t0)
 
         # Check if the lines are vertical or horizontal enough for a card
-        min_length_H = int(imgH * PARAMS["min_length_ratio"])
-        min_length_W = int(imgW * PARAMS["min_length_ratio"])
+        t0 = cv2.getTickCount()
+        min_length_H = int(img.shape[0] * PARAMS["min_length_ratio"])
+        min_length_W = int(img.shape[1] * PARAMS["min_length_ratio"])
 
         if (
-            check_lines(lines_left, min_length_H, True)
-            and check_lines(lines_right, min_length_H, True)
-            and check_lines(lines_top, min_length_W, False)
-            and check_lines(lines_bottom, min_length_W, False)
+            sum(
+                [
+                    check_lines(lines_left, min_length_H, True),
+                    check_lines(lines_right, min_length_H, True),
+                    check_lines(lines_top, min_length_W, False),
+                    check_lines(lines_bottom, min_length_W, False),
+                ]
+            )
+            >= 3
         ):
             draw_text(masked_frame, "Card Detected!", coords=(camW - 50, 50))
         else:
             draw_text(masked_frame, "No Card Detected!", coords=(camW - 50, 50))
+        get_runtime("Check Lines", t0)
 
         # Calculate FPS
         cur_frame_time = time.perf_counter()
@@ -262,23 +306,23 @@ def main() -> None:
         draw_text(masked_frame, f"FPS: {int(fps)}", coords=(camW - 50, 100))
 
         # Show the previews with the edges highlighted
-        app_name = "Card Scanner"
         cv2.imshow(app_name, masked_frame)
-        cv2.imshow("Detected Edges", regions_preview)
+        if DRAW_FOUND_LINES:
+            cv2.imshow("Detected Edges", regions_preview)
 
         # Press esc or "q" to quit
         if cv2.waitKey(1) == 27 or cv2.waitKey(1) == ord("q"):
             print(f"Shutting Down {app_name}...")
+            cam.release()
             return
-
-    # Read an image and convert to grayscale
-    # img_file = "./sample-card.jpeg"
-    # frame = cv2.imread(img_file, 0)
-
-    # Press any key to quit the program
-    # cv2.waitKey(0)
 
 
 if __name__ == "__main__":
     main()
-    cv2.destroyAllWindows()
+
+    print("\nRuntimes:")
+    for name, runtime in RUNTIMES.items():
+        print(f"{name}")
+        print(f"AVG: {np.mean(runtime):.3f}ms")
+        print(f"STD: {np.std(runtime):.3f}ms")
+        print("---")
