@@ -23,8 +23,8 @@ A simple proof-of-concept real-time card scanner using Python and OpenCV based o
 <table>
     <tr>
         <td>Card Detected (All OK)</td>
-        <td>3 Edges Detected</td>
-        <td>No Card Detected</td>
+        <td>3 Edges Detected (Readjust)</td>
+        <td>No Card Detected (Fail)</td>
     </tr>
     <tr>
         <td><img src="./demo/demo-green.png" width=200></td>
@@ -68,7 +68,7 @@ python main.py
 Changes to parameters can be done in the `main.py` script directly. The configs can be pulled out into a YAML config file instead but for simplicity, this was done instead. 
 
 **Note:** Houghlines params are based off of a hard-coded max size of 300
-```yaml
+```python
 PARAMS = {
     "max_size": 300,  # scaled down image for faster processing
     "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
@@ -89,6 +89,7 @@ PARAMS = {
     "area_detection_ratio": 0.1,  # ratio of the detection area to the image area
     "min_length_ratio": 0.9,  # ratio of lines to detect to the image edges
     "angle_threshold": 10,  # in degrees
+}
 ```
 
 ## Based On: SmartCamera by PQPO
