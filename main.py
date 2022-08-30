@@ -1,4 +1,4 @@
-"""Simple proof-of-concept automatic card scanner written in Python
+"""Simple proof-of-concept real-time card scanner written in Python
 
 Implementation details were taken from the docs by PQPO at:
 https://pqpo.me/2018/09/12/android-camera-real-time-scanning/"""
@@ -14,12 +14,12 @@ from collections import defaultdict
 from Camera import Camera
 
 PARAMS = {
-    "inner_mask": False,
-    "mask_alpha": 0.8,
-    "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
-    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "max_size": 300,  # scaled down image for faster processing
-    "alpha_contrast": 1.5,  # higher value = more contrast (0-3)
+    "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
+    "inner_mask": False,  # shows an inner rectangle mask to the user
+    "mask_alpha": 0.8,  # opacity of the mask
+    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
+    "alpha_contrast": 1.5,  # higher value = more contrast (0 to 3)
     "beta_brightness": 0,  # higher value = brighter (-100 to 100)
     "gaussian_blur_radius": (3, 3),  # higher radius = more blur
     "canny_threshold1": 20,
@@ -32,9 +32,7 @@ PARAMS = {
     "houghlines_min_line_length": 50,  # minimum length of a line, 80
     "houghlines_max_line_gap": 50,  # maximum gap between two points to form a line, 10
     "area_detection_ratio": 0.1,  # ratio of the detection area to the image area
-    "min_length_ratio": 0.9,  # ratio of lines to detect to the image edges
     "angle_threshold": 10,  # in degrees, 5
-    "edges_needed": 3,  # number of edges needed to count as a card (4 maximum)
 }
 
 RUNTIMES = defaultdict(list)
@@ -124,7 +122,7 @@ def process_image(img: np.ndarray) -> np.ndarray:
     # Convert to grayscale
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Apply Gaussian blur to the image to remove noise
+    # Apply Gaussian blur to the image to reduce noise
     img = cv2.GaussianBlur(img, (PARAMS["gaussian_blur_radius"]), 0)
 
     # Apply Canny edge detection to the image to find edges
@@ -328,47 +326,38 @@ def main() -> None:
 
         # Check if the lines are vertical or horizontal enough for a card
         t0 = cv2.getTickCount()
-        min_length_H = int(img.shape[0] * PARAMS["min_length_ratio"])
-        min_length_W = int(img.shape[1] * PARAMS["min_length_ratio"])
+        min_length_H = int(img.shape[0] * (1 - PARAMS["area_detection_ratio"]))
+        min_length_W = int(img.shape[1] * (1 - PARAMS["area_detection_ratio"]))
 
-        if (
-            sum(
-                [
-                    check_lines(lines_left, min_length_H, True),
-                    check_lines(lines_right, min_length_H, True),
-                    check_lines(lines_top, min_length_W, False),
-                    check_lines(lines_bottom, min_length_W, False),
-                ]
-            )
-            >= PARAMS["edges_needed"]
-        ):
-            cv2.rectangle(
-                masked_frame,
-                (
-                    int(camH / 2 - mask_dims[1] / 2),
-                    int(camW / 2 - mask_dims[0] / 2),
-                ),
-                (
-                    int(camH / 2 + mask_dims[1] / 2),
-                    int(camW / 2 + mask_dims[0] / 2),
-                ),
-                (0, 255, 0),
-                3,
-            )
+        draw_border = lambda color: cv2.rectangle(
+            masked_frame,
+            (
+                int(camH / 2 - mask_dims[1] / 2),
+                int(camW / 2 - mask_dims[0] / 2),
+            ),
+            (
+                int(camH / 2 + mask_dims[1] / 2),
+                int(camW / 2 + mask_dims[0] / 2),
+            ),
+            color,
+            3,
+        )
+
+        found_edges = [
+            check_lines(lines_left, min_length_H, True),
+            check_lines(lines_right, min_length_H, True),
+            check_lines(lines_top, min_length_W, False),
+            check_lines(lines_bottom, min_length_W, False),
+        ]
+        print(f"Found {found_edges} edges")
+        found_edges = sum(found_edges)
+
+        if found_edges == 4:
+            draw_border((0, 255, 0))
+        elif found_edges == 3:
+            draw_border((0, 255, 255))
         else:
-            cv2.rectangle(
-                masked_frame,
-                (
-                    int(camH / 2 - mask_dims[1] / 2),
-                    int(camW / 2 - mask_dims[0] / 2),
-                ),
-                (
-                    int(camH / 2 + mask_dims[1] / 2),
-                    int(camW / 2 + mask_dims[0] / 2),
-                ),
-                (0, 0, 255),
-                3,
-            )
+            draw_border((0, 0, 255))
         get_runtime("Check Lines", t0)
 
         # Calculate FPS
