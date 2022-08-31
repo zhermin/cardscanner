@@ -21,21 +21,26 @@ PARAMS = {
     "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "alpha_contrast": 1.5,  # higher value = more contrast (0 to 3)
     "beta_brightness": 0,  # higher value = brighter (-100 to 100)
-    "gaussian_blur_radius": (3, 3),  # higher radius = more blur
+    "gaussian_blur_radius": 5,  # higher radius = more blur
     "canny_threshold1": 20,
     "canny_threshold2": 50,
-    "dilate_structing_element_size": (3, 3),  # larger kernel = thicker lines
+    "dilate_structing_element_size": 4,  # larger kernel = thicker lines
     "OTSU_threshold_min": 0,
     "OTSU_threshold_max": 255,
     # Note: Houghlines params are based off of the hard-coded max size of 300
     "houghlines_threshold": 100,  # minimum intersections to detect a line, 130
-    "houghlines_min_line_length": 50,  # minimum length of a line, 80
-    "houghlines_max_line_gap": 50,  # maximum gap between two points to form a line, 10
+    "houghlines_min_line_length": 80,  # minimum length of a line, 80
+    "houghlines_max_line_gap": 10,  # maximum gap between two points to form a line, 10
     "area_detection_ratio": 0.1,  # ratio of the detection area to the image area
+    "corner_quality_ratio": 0.5,  # higher value = stricter corner detection
+    "min_length_ratio": 0.9,  # ratio of lines to detect to the image edges
     "angle_threshold": 10,  # in degrees, 5
 }
 
 RUNTIMES = defaultdict(list)
+DEBUG = False
+RED = (0, 0, 255)
+GREEN = (0, 255, 0)
 
 
 def parse_args() -> ArgumentParser:
@@ -123,7 +128,9 @@ def process_image(img: np.ndarray) -> np.ndarray:
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Apply Gaussian blur to the image to reduce noise
-    img = cv2.GaussianBlur(img, (PARAMS["gaussian_blur_radius"]), 0)
+    img = cv2.GaussianBlur(
+        img, (PARAMS["gaussian_blur_radius"], PARAMS["gaussian_blur_radius"]), 0
+    )
 
     # Apply Canny edge detection to the image to find edges
     img = cv2.Canny(img, PARAMS["canny_threshold1"], PARAMS["canny_threshold2"])
@@ -132,7 +139,11 @@ def process_image(img: np.ndarray) -> np.ndarray:
     img = cv2.dilate(
         img,
         cv2.getStructuringElement(
-            cv2.MORPH_RECT, PARAMS["dilate_structing_element_size"]
+            cv2.MORPH_RECT,
+            (
+                PARAMS["dilate_structing_element_size"],
+                PARAMS["dilate_structing_element_size"],
+            ),
         ),
     )
 
@@ -147,13 +158,12 @@ def process_image(img: np.ndarray) -> np.ndarray:
     return img
 
 
-def find_lines(
-    img: np.ndarray, mask_dims: tuple[int], DRAW_FOUND_LINES: bool
+def find_lines_and_corners(
+    img: np.ndarray, mask_dims: tuple[int], SHOW_PREVIEW: bool
 ) -> tuple[np.ndarray]:
     """Find the lines in the binarized image"""
-    imgH, imgW = img.shape
 
-    # Section off the image into 4 areas to check for lines
+    imgH, imgW = img.shape
     maskH, maskW, mask_border = mask_dims
     if PARAMS["inner_mask"]:
         detectionH = int(imgH * mask_border / maskH)
@@ -162,6 +172,7 @@ def find_lines(
         detectionH = int(imgH * PARAMS["area_detection_ratio"] / 2)
         detectionW = int(imgW * PARAMS["area_detection_ratio"] / 2)
 
+    # Section off the image into 4 areas to check for lines
     region_left = img[:, :detectionW]
     region_right = img[:, imgW - detectionW :]
     region_top = img[:detectionH, :]
@@ -182,8 +193,24 @@ def find_lines(
         get_houghlines, [region_left, region_right, region_top, region_bottom]
     )
 
-    # Draw the found lines on a blank image to check if correctly found
-    if DRAW_FOUND_LINES:
+    # Section off the image into the 4 corner areas to check for card corners
+    region_topleft = img[:detectionH, :detectionW]
+    region_topright = img[:detectionH, imgW - detectionW :]
+    region_bottomleft = img[imgH - detectionH :, :detectionW]
+    region_bottomright = img[imgH - detectionH :, imgW - detectionW :]
+
+    get_corners = lambda region: cv2.goodFeaturesToTrack(
+        region, 1, PARAMS["corner_quality_ratio"], 20
+    )
+
+    # Use Shi-Tomasi corner detection to find corners in the image
+    corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = map(
+        get_corners,
+        [region_topleft, region_topright, region_bottomleft, region_bottomright],
+    )
+
+    # Draw the found lines and corners on a small preview window
+    if SHOW_PREVIEW:
         regions_preview = np.zeros((imgH, imgW, 3), np.uint8)
         regions_preview[:, :detectionW] = cv2.cvtColor(region_left, cv2.COLOR_GRAY2BGR)
         regions_preview[:, imgW - detectionW :] = cv2.cvtColor(
@@ -197,7 +224,7 @@ def find_lines(
         if lines_left is not None and lines_left.any():
             for line in lines_left:
                 for x1, y1, x2, y2 in line:
-                    cv2.line(regions_preview, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    cv2.line(regions_preview, (x1, y1), (x2, y2), RED, 2)
         if lines_right is not None and lines_right.any():
             for line in lines_right:
                 for x1, y1, x2, y2 in line:
@@ -205,13 +232,13 @@ def find_lines(
                         regions_preview,
                         (imgW - detectionW + x1, y1),
                         (imgW - detectionW + x2, y2),
-                        (0, 0, 255),
+                        RED,
                         2,
                     )
         if lines_top is not None and lines_top.any():
             for line in lines_top:
                 for x1, y1, x2, y2 in line:
-                    cv2.line(regions_preview, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    cv2.line(regions_preview, (x1, y1), (x2, y2), RED, 2)
         if lines_bottom is not None and lines_bottom.any():
             for line in lines_bottom:
                 for x1, y1, x2, y2 in line:
@@ -219,13 +246,34 @@ def find_lines(
                         regions_preview,
                         (x1, imgH - detectionH + y1),
                         (x2, imgH - detectionH + y2),
-                        (0, 0, 255),
+                        RED,
                         2,
                     )
+
+        if corner_topleft is not None:
+            x, y = corner_topleft.astype(int).ravel()
+            cv2.circle(regions_preview, (x, y), 3, GREEN, -1)
+        if corner_topright is not None:
+            x, y = corner_topright.astype(int).ravel()
+            x += imgW - detectionW
+            cv2.circle(regions_preview, (x, y), 3, GREEN, -1)
+        if corner_bottomleft is not None:
+            x, y = corner_bottomleft.astype(int).ravel()
+            y += imgH - detectionH
+            cv2.circle(regions_preview, (x, y), 3, GREEN, -1)
+        if corner_bottomright is not None:
+            x, y = corner_bottomright.astype(int).ravel()
+            x += imgW - detectionW
+            y += imgH - detectionH
+            cv2.circle(regions_preview, (x, y), 3, GREEN, -1)
     else:
         regions_preview = None
 
-    return regions_preview, lines_left, lines_right, lines_top, lines_bottom
+    return (
+        regions_preview,
+        [corner_topleft, corner_topright, corner_bottomleft, corner_bottomright],
+        [lines_left, lines_right, lines_top, lines_bottom],
+    )
 
 
 def check_lines(lines: np.ndarray, min_length: int, is_vertical: bool) -> bool:
@@ -290,7 +338,7 @@ def main() -> None:
     # Parse command line arguments
     args = parse_args()
     video_src = args.cam if args.cam is not None else args.video
-    DRAW_FOUND_LINES = bool(args.preview)
+    SHOW_PREVIEW = bool(args.preview)
 
     # Initialise FPS timings
     prev_frame_time, cur_frame_time = 0, 0
@@ -319,57 +367,91 @@ def main() -> None:
         get_runtime("Process Image", t0)
 
         t0 = cv2.getTickCount()
-        regions_preview, lines_left, lines_right, lines_top, lines_bottom = find_lines(
-            img, mask_dims, DRAW_FOUND_LINES
+        regions_preview, corners, lines = find_lines_and_corners(
+            img, mask_dims, SHOW_PREVIEW
         )
         get_runtime("Find Lines", t0)
 
+        lines_left, lines_right, lines_top, lines_bottom = lines
+        corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = corners
+
         # Check if the lines are vertical or horizontal enough for a card
         t0 = cv2.getTickCount()
-        min_length_H = int(img.shape[0] * (1 - PARAMS["area_detection_ratio"]))
-        min_length_W = int(img.shape[1] * (1 - PARAMS["area_detection_ratio"]))
+        min_length_H = int(img.shape[0] * PARAMS["min_length_ratio"])
+        min_length_W = int(img.shape[1] * PARAMS["min_length_ratio"])
 
-        draw_border = lambda color: cv2.rectangle(
+        draw_line = lambda found_line, x1, y1, x2, y2: cv2.line(
             masked_frame,
-            (
-                int(camH / 2 - mask_dims[1] / 2),
-                int(camW / 2 - mask_dims[0] / 2),
-            ),
-            (
-                int(camH / 2 + mask_dims[1] / 2),
-                int(camW / 2 + mask_dims[0] / 2),
-            ),
-            color,
+            (int(x1), int(y1)),
+            (int(x2), int(y2)),
+            GREEN if found_line else RED,
             3,
         )
 
-        found_edges = [
+        draw_line(
             check_lines(lines_left, min_length_H, True),
+            camH / 2 - mask_dims[1] / 2,
+            camW / 2 - mask_dims[0] / 2,
+            camH / 2 - mask_dims[1] / 2,
+            camW / 2 + mask_dims[0] / 2,
+        )
+        draw_line(
             check_lines(lines_right, min_length_H, True),
+            camH / 2 + mask_dims[1] / 2,
+            camW / 2 - mask_dims[0] / 2,
+            camH / 2 + mask_dims[1] / 2,
+            camW / 2 + mask_dims[0] / 2,
+        )
+        draw_line(
             check_lines(lines_top, min_length_W, False),
+            camH / 2 - mask_dims[1] / 2,
+            camW / 2 - mask_dims[0] / 2,
+            camH / 2 + mask_dims[1] / 2,
+            camW / 2 - mask_dims[0] / 2,
+        )
+        draw_line(
             check_lines(lines_bottom, min_length_W, False),
-        ]
-        print(f"Found {found_edges} edges")
-        found_edges = sum(found_edges)
+            camH / 2 - mask_dims[1] / 2,
+            camW / 2 + mask_dims[0] / 2,
+            camH / 2 + mask_dims[1] / 2,
+            camW / 2 + mask_dims[0] / 2,
+        )
 
-        if found_edges == 4:
-            draw_border((0, 255, 0))
-        elif found_edges == 3:
-            draw_border((0, 255, 255))
-        else:
-            draw_border((0, 0, 255))
-        get_runtime("Check Lines", t0)
+        # Check if the corners are found
+        draw_circle = lambda found_circle, x, y: cv2.circle(
+            masked_frame,
+            (int(x), int(y)),
+            10,
+            GREEN if found_circle is not None else RED,
+            -1,
+        )
+
+        draw_circle(
+            corner_topleft, camH / 2 - mask_dims[1] / 2, camW / 2 - mask_dims[0] / 2
+        )
+        draw_circle(
+            corner_topright, camH / 2 + mask_dims[1] / 2, camW / 2 - mask_dims[0] / 2
+        )
+        draw_circle(
+            corner_bottomleft, camH / 2 - mask_dims[1] / 2, camW / 2 + mask_dims[0] / 2
+        )
+        draw_circle(
+            corner_bottomright, camH / 2 + mask_dims[1] / 2, camW / 2 + mask_dims[0] / 2
+        )
+        get_runtime("Check Lines and Corners", t0)
 
         # Calculate FPS
         cur_frame_time = time.perf_counter()
         fps = 1 / (cur_frame_time - prev_frame_time)
         prev_frame_time = cur_frame_time
         RUNTIMES["FPS"].append(fps)
-        # draw_text(masked_frame, f"FPS: {int(fps)}", coords=(camW - 50, 100))
+
+        if DEBUG:
+            draw_text(masked_frame, f"FPS: {int(fps)}", coords=(camW - 50, 100))
 
         # Show the previews with the edges highlighted
         cv2.imshow(app_name, masked_frame)
-        if DRAW_FOUND_LINES:
+        if SHOW_PREVIEW:
             cv2.imshow("Detected Edges", regions_preview)
 
         # Press ESC or "q" to quit
@@ -382,9 +464,10 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-    print("\nRuntimes:")
-    for name, runtime in RUNTIMES.items():
-        print(f"{name}")
-        print(f"AVG: {np.mean(runtime):.3f}ms")
-        print(f"STD: {np.std(runtime):.3f}ms")
-        print("---")
+    if DEBUG:
+        print("\nRuntimes:")
+        for name, runtime in RUNTIMES.items():
+            print(f"{name}")
+            print(f"AVG: {np.mean(runtime):.3f}ms")
+            print(f"STD: {np.std(runtime):.3f}ms")
+            print("---")

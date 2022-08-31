@@ -12,26 +12,15 @@ A simple proof-of-concept real-time card scanner using Python and OpenCV based o
    5. Apply a Canny edge detector to detect edges
    6. Dilate the frame to strengthen the edges
    7. Binarize and apply OTSU thresholding to remove interference
-4. Section off the image into 4 areas to check for lines
-5. Use Probabilistic Hough Transform to find lines in each area
-6. Check if the lines are long enough and vertical or horizontal enough for a card
-7. Give visual feedback depending on number of edges found
-   1. Green: All 4 edges found, most likely a card (although something at the center of the card will still be undetected)
-   2. Yellow: Only 3 edges found, maybe the card is slightly misaligned or something is blocking one of the edges
-   3. Red: Less than 3 edges found, not a card
-
-<table>
-    <tr>
-        <td>Card Detected (All OK)</td>
-        <td>3 Edges Detected (Readjust)</td>
-        <td>No Card Detected (Fail)</td>
-    </tr>
-    <tr>
-        <td><img src="./demo/demo-green.png" width=200></td>
-        <td><img src="./demo/demo-yellow.png" width=200></td>
-        <td><img src="./demo/demo-red.png" width=200></td>
-    </tr>
- </table>
+4. Check for lines
+   1. Section off the image into 4 areas: left, right, top and bottom
+   2. Use Probabilistic Hough Transform to find lines in each area
+   3. Check if the lines are long enough and vertical or horizontal enough for a card
+5. Check for corners
+   1. Section off the image into the 4 corners: top left, top right, bottom left and bottom right
+   2. Apply Shi-Tomasi corner detection to find corners in the image
+   3. There will be only max 1 corner found for each corner
+6. Give visual feedback for each line or corner found separately
 
 ## Analysis
 
@@ -39,13 +28,15 @@ A simple proof-of-concept real-time card scanner using Python and OpenCV based o
 - Relatively fast, around 10ms to process each frame (excluding frame reading due to library and device limitations)
 - Simple to implement and understand, will help when writing the custom functions to do edge detection on mobile devices
 - Uses the OpenCV library, which has support for both Python and C++, allowing a smoother transition to the custom Android APK POC
-- Dim lighting is not as detrimental compared to glares as the edges can still be differentiated from the background
+- Dim lighting is not as bad compared to glares as the edges can still be differentiated from the background
+- Able to use corner detection to make the detection more robust (although using corners alone will be worse than edge detection)
 
 ### Cons
 - If colours of the card borders are similar to the background, it is very hard to detect the card
 - Glare or strong light reflections causing the video feed to be completely white will also hinder the detection
 - Because only edges are detected, if the card face is blocked by objects, it would still be detected as a card as long as the 4 edges are visible and unblocked
-- As long as there is a colour difference, a line will be detected. This may result in false positives which will require further filtering (for example Card Type detection)
+- False positives can appear quite often despite some parameter tuning, which means further filtering is required, for example Card Type classification
+- The "corner" detection method also detects curves, which causes a lot of false positives for the corners, much more than for edges
 
 ## Setup
 
@@ -77,16 +68,17 @@ PARAMS = {
     "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "alpha_contrast": 1.5,  # higher value = more contrast (0 to 3)
     "beta_brightness": 0,  # higher value = brighter (-100 to 100)
-    "gaussian_blur_radius": (3, 3),  # higher radius = more blur
+    "gaussian_blur_radius": 3,  # higher radius = more blur
     "canny_threshold1": 20,
     "canny_threshold2": 50,
-    "dilate_structing_element_size": (3, 3),  # larger kernel = thicker lines
+    "dilate_structing_element_size": 4,  # larger kernel = thicker lines
     "OTSU_threshold_min": 0,
     "OTSU_threshold_max": 255,
     "houghlines_threshold": 100,  # minimum intersections to detect a line
-    "houghlines_min_line_length": 50,  # minimum length of a line
-    "houghlines_max_line_gap": 50,  # maximum gap between two points to form a line
+    "houghlines_min_line_length": 80,  # minimum length of a line
+    "houghlines_max_line_gap": 10,  # maximum gap between two points to form a line
     "area_detection_ratio": 0.1,  # ratio of the detection area to the image area
+    "corner_quality_ratio": 0.5,  # higher value = stricter corner detection
     "min_length_ratio": 0.9,  # ratio of lines to detect to the image edges
     "angle_threshold": 10,  # in degrees
 }
