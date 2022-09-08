@@ -66,7 +66,7 @@ python main.py
 ```
 
 ### Configs
-Changes to parameters can be done in the `main.py` script directly. The configs can be pulled out into a YAML config file instead but for simplicity, this was done instead. 
+Changes to parameters can be done in the `main.py` script directly. The configs can be pulled out into a YAML config file but for simplicity, this was done instead. 
 
 **Note:** Ratio params are based off of the max_size param
 ```python
