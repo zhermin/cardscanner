@@ -13,6 +13,7 @@ from collections import defaultdict
 # Custom Libraries
 from Camera import Camera
 
+# Note: Ratio params are based off of the max_size param
 PARAMS = {
     "max_size": 300,  # scaled down image for faster processing
     "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
@@ -21,18 +22,18 @@ PARAMS = {
     "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "alpha_contrast": 1,  # higher value = more contrast (0 to 3)
     "beta_brightness": 0,  # higher value = brighter (-100 to 100)
-    "gaussian_blur_radius": 3,  # higher radius = more blur
-    "canny_threshold1_ratio": 0.05,
-    "canny_threshold2_ratio": 0.1,
+    "gaussian_blur_radius": 5,  # higher radius = more blur
+    "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold
+    "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold
+    # if between threshold, pixel accepted only if connected to pixel above upper threshold
     "dilate_structing_element_size": 3,  # larger kernel = thicker lines
     "OTSU_threshold_min": 0,
     "OTSU_threshold_max": 255,
-    # Note: Houghlines params are based off of the hard-coded max size of 300
     "houghlines_threshold_ratio": 0.3,  # minimum intersections to detect a line, 130
-    "houghlines_min_line_length": 0.2,  # minimum length of a line, 80
+    "houghlines_min_line_length": 0.3,  # minimum length of a line, 80
     "houghlines_max_line_gap": 0.01,  # maximum gap between two points to form a line, 10
     "area_detection_ratio": 0.15,  # ratio of the detection area to the image area
-    "corner_quality_ratio": 0.5,  # higher value = stricter corner detection
+    "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
     "min_length_ratio": 0.6,  # ratio of lines to detect to the image edges
     "angle_threshold": 5,  # in degrees, 5
     "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
@@ -123,11 +124,11 @@ def process_image(img: np.ndarray) -> np.ndarray:
         preview_original = img.copy()
 
     # Increase contrast and brightness
-    t0 = cv2.getTickCount()
-    img = cv2.convertScaleAbs(
-        img, alpha=PARAMS["alpha_contrast"], beta=PARAMS["beta_brightness"]
-    )
-    get_runtime("- Increase Contrast/Brightness", t0)
+    # t0 = cv2.getTickCount()
+    # img = cv2.convertScaleAbs(
+    #     img, alpha=PARAMS["alpha_contrast"], beta=PARAMS["beta_brightness"]
+    # )
+    # get_runtime("- Increase Contrast/Brightness", t0)
 
     # Convert to grayscale
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -142,8 +143,8 @@ def process_image(img: np.ndarray) -> np.ndarray:
     # Apply Canny edge detection to the image to find edges
     img = cv2.Canny(
         img,
-        int(PARAMS["max_size"] * PARAMS["canny_threshold1_ratio"]),
-        int(PARAMS["max_size"] * PARAMS["canny_threshold2_ratio"]),
+        int(PARAMS["max_size"] * PARAMS["canny_lowerthreshold_ratio"]),
+        int(PARAMS["max_size"] * PARAMS["canny_upperthreshold_ratio"]),
     )
     if SHOW_PREVIEW:
         preview_findlines = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
@@ -161,12 +162,12 @@ def process_image(img: np.ndarray) -> np.ndarray:
     )
 
     # Binarize and threshold the image to remove interference
-    _, img = cv2.threshold(
-        img,
-        PARAMS["OTSU_threshold_min"],
-        PARAMS["OTSU_threshold_max"],
-        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
-    )
+    # _, img = cv2.threshold(
+    #     img,
+    #     PARAMS["OTSU_threshold_min"],
+    #     PARAMS["OTSU_threshold_max"],
+    #     cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    # )
     if SHOW_PREVIEW:
         preview_end = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
@@ -211,17 +212,51 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
         get_houghlines, [region_left, region_right, region_top, region_bottom]
     )
 
+    # Use Shi-Tomasi corner detection to find corners in the image
+    preview_regions = np.zeros((imgH, imgW, 3), np.uint8)
+    drawn_lines = cv2.cvtColor(preview_regions, cv2.COLOR_BGR2GRAY)
+    # preview_regions[:, :detectionW] = cv2.cvtColor(region_left, cv2.COLOR_GRAY2BGR)
+    # preview_regions[:, imgW - detectionW :] = cv2.cvtColor(
+    #     region_right, cv2.COLOR_GRAY2BGR
+    # )
+    # preview_regions[:detectionH, :] = cv2.cvtColor(region_top, cv2.COLOR_GRAY2BGR)
+    # preview_regions[imgH - detectionH :, :] = cv2.cvtColor(
+    #     region_bottom, cv2.COLOR_GRAY2BGR
+    # )
+
+    if lines_left is not None and lines_left.any():
+        for line in lines_left:
+            for x1, y1, x2, y2 in line:
+                cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
+                cv2.line(drawn_lines, (x1, y1), (x2, y2), 255, 1)
+    if lines_right is not None and lines_right.any():
+        for line in lines_right:
+            for x1, y1, x2, y2 in line:
+                x1, x2 = x1 + imgW - detectionW, x2 + imgW - detectionW
+                cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
+                cv2.line(drawn_lines, (x1, y1), (x2, y2), 255, 1)
+    if lines_top is not None and lines_top.any():
+        for line in lines_top:
+            for x1, y1, x2, y2 in line:
+                cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
+                cv2.line(drawn_lines, (x1, y1), (x2, y2), 255, 1)
+    if lines_bottom is not None and lines_bottom.any():
+        for line in lines_bottom:
+            for x1, y1, x2, y2 in line:
+                y1, y2 = y1 + imgH - detectionH, y2 + imgH - detectionH
+                cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
+                cv2.line(drawn_lines, (x1, y1), (x2, y2), 255, 1)
+
     # Section off the image into the 4 corner areas to check for card corners
-    region_topleft = img[:detectionH, :detectionW]
-    region_topright = img[:detectionH, imgW - detectionW :]
-    region_bottomleft = img[imgH - detectionH :, :detectionW]
-    region_bottomright = img[imgH - detectionH :, imgW - detectionW :]
+    region_topleft = drawn_lines[:detectionH, :detectionW]
+    region_topright = drawn_lines[:detectionH, imgW - detectionW :]
+    region_bottomleft = drawn_lines[imgH - detectionH :, :detectionW]
+    region_bottomright = drawn_lines[imgH - detectionH :, imgW - detectionW :]
 
     get_corners = lambda region: cv2.goodFeaturesToTrack(
         region, 1, PARAMS["corner_quality_ratio"], 20
     )
 
-    # Use Shi-Tomasi corner detection to find corners in the image
     corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = map(
         get_corners,
         [region_topleft, region_topright, region_bottomleft, region_bottomright],
@@ -229,45 +264,6 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
 
     # Draw the found lines and corners on a small preview window
     if SHOW_PREVIEW:
-        preview_regions = np.zeros((imgH, imgW, 3), np.uint8)
-        preview_regions[:, :detectionW] = cv2.cvtColor(region_left, cv2.COLOR_GRAY2BGR)
-        preview_regions[:, imgW - detectionW :] = cv2.cvtColor(
-            region_right, cv2.COLOR_GRAY2BGR
-        )
-        preview_regions[:detectionH, :] = cv2.cvtColor(region_top, cv2.COLOR_GRAY2BGR)
-        preview_regions[imgH - detectionH :, :] = cv2.cvtColor(
-            region_bottom, cv2.COLOR_GRAY2BGR
-        )
-
-        if lines_left is not None and lines_left.any():
-            for line in lines_left:
-                for x1, y1, x2, y2 in line:
-                    cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
-        if lines_right is not None and lines_right.any():
-            for line in lines_right:
-                for x1, y1, x2, y2 in line:
-                    cv2.line(
-                        preview_regions,
-                        (imgW - detectionW + x1, y1),
-                        (imgW - detectionW + x2, y2),
-                        RED,
-                        2,
-                    )
-        if lines_top is not None and lines_top.any():
-            for line in lines_top:
-                for x1, y1, x2, y2 in line:
-                    cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
-        if lines_bottom is not None and lines_bottom.any():
-            for line in lines_bottom:
-                for x1, y1, x2, y2 in line:
-                    cv2.line(
-                        preview_regions,
-                        (x1, imgH - detectionH + y1),
-                        (x2, imgH - detectionH + y2),
-                        RED,
-                        2,
-                    )
-
         if corner_topleft is not None:
             x, y = corner_topleft.astype(int).ravel()
             cv2.circle(preview_regions, (x, y), 3, GREEN, -1)
@@ -425,10 +421,31 @@ def main() -> None:
             [valid_topleft, valid_topright, valid_bottomleft, valid_bottomright]
         )
 
-        # Save a screenshot if a card is detected for 3 frames (around 200ms if 15fps)
-        if valid_corners_edges >= 3:
+        # Save a screenshot if a card is detected for Y milliseconds
+        if found_corners >= 3:
             valid_frames += 1
             if valid_frames >= WAIT_FRAMES:
+                # Warp Perspective if all 4 corners are found
+                # if found_corners == 4:
+                #     input_pts = np.float32(
+                #         [
+                #             corner_topleft[0],
+                #             corner_topright[0],
+                #             corner_bottomright[0],
+                #             corner_bottomleft[0],
+                #         ]
+                #     )
+                #     print(input_pts)
+                #     output_pts = np.float32(
+                #         [[0, 0], [camW, 0], [0, camH], [camW, camH]]
+                #     )
+                #     print(output_pts)
+                #     transformed_mat = cv2.getPerspectiveTransform(input_pts, output_pts)
+                #     transformed_img = cv2.warpPerspective(
+                #         frame, transformed_mat, (camW, camH)
+                #     )
+                #     cv2.imshow("Transformed Image", transformed_img)
+
                 card = masked_frame[
                     int(camW / 2 - mask_dims[0] / 2) : int(camW / 2 + mask_dims[0] / 2),
                     int(camH / 2 - mask_dims[1] / 2) : int(camH / 2 + mask_dims[1] / 2),

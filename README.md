@@ -4,23 +4,33 @@ A simple proof-of-concept real-time card scanner using Python and OpenCV based o
 ## Application Flow
 1. Initialize either a video file or webcam feed
 2. Apply a rectangular mask over a frame to guide the card alignment for the user
+    - [PARAM] Percentage of frame to be obscured
 3. Process the frame to highlight the lines
-   1. Crop and scale down the frame for faster processing
-   2. Increase the contrast and brightness if needed
-   3. Convert to grayscale
-   4. Apply a Gaussian blur to reduce noise
-   5. Apply a Canny edge detector to detect edges
-   6. Dilate the frame to strengthen the edges
-   7. Binarize and apply OTSU thresholding to remove interference
-4. Check for lines
-   1. Section off the image into 4 areas: left, right, top and bottom
-   2. Use Probabilistic Hough Transform to find lines in each area
-   3. Check if the lines are long enough and vertical or horizontal enough for a card
-5. Check for corners
-   1. Section off the image into the 4 corners: top left, top right, bottom left and bottom right
-   2. Apply Shi-Tomasi corner detection to find corners in the image
-   3. There will be only max 1 corner found for each corner
-6. Give visual feedback for each line or corner found separately
+    1. Crop and scale down the frame for faster processing
+        - [PARAM] Size of scaled down frame
+    2. Convert to grayscale
+    3. Apply a Gaussian blur to reduce noise
+        - [PARAM] Larger kernel size will blur image more
+    4. Apply a Canny edge detector to detect edges
+        - [PARAM] Rejects pixel if pixel gradient below lower threshold
+        - [PARAM] Accepts pixel if pixel gradient above upper threshold
+        - If between threshold, pixel accepted only if connected to pixel above upper threshold
+    5. Apply Dilation to strengthen the edges
+        - [PARAM] Larger kernel size dilates the lines more
+4.  Check for lines
+    1. Section off the image into 4 areas: left, right, top and bottom
+        - [PARAM] Percentage of inner area to perform detection
+    2. Use Probabilistic Hough Transform to find lines in each area
+        - [PARAM] Each potential line must be long enough
+        - [PARAM] Gaps between potential lines must be short enough
+5.  Check for corners
+    1. Section off the image into the 4 corners: top left, top right, bottom left and bottom right
+    2. Apply Shi-Tomasi corner detection to find corners in the found lines
+        - [PARAM] Higher ratio means stricter detection
+    3. There will be only max 1 corner found for each corner
+6.  Conditions for a card: at least 3 corners found (based on PRD requirements)
+    1.  Give visual feedback for each line or corner found separately
+7.  Automatically captures the video frame after some Y milliseconds or the equivalent in some number of frames
 
 ## Analysis
 
@@ -29,14 +39,14 @@ A simple proof-of-concept real-time card scanner using Python and OpenCV based o
 - Simple to implement and understand, will help when writing the custom functions to do edge detection on mobile devices
 - Uses the OpenCV library, which has support for both Python and C++, allowing a smoother transition to the custom Android APK POC
 - Dim lighting is not as bad compared to glares as the edges can still be differentiated from the background
-- Able to use corner detection to make the detection more robust (although using corners alone will be worse than edge detection)
+- If colours of the card borders are similar to the background, it will be harder to detect but still possible if parameters tuned to be sensitive
 
 ### Cons
-- If colours of the card borders are similar to the background, it is very hard to detect the card
-- Glare or strong light reflections causing the video feed to be completely white will also hinder the detection
-- Because only edges are detected, if the card face is blocked by objects, it would still be detected as a card as long as the 4 edges are visible and unblocked
-- False positives can appear quite often despite some parameter tuning, which means further filtering is required, for example Card Type classification
-- The "corner" detection method also detects curves, which causes a lot of false positives for the corners, much more than for edges
+- Glare or strong light reflections causing the video feed to be completely white will hinder the detection
+- If someone is holding the card in their hand or is generally in a noisy background, it can be hard to detect as well
+    - We can prompt user to place the card flat on a surface before scanning
+- The "corner" detection method also detects curves, which can cause false positives for the corners even if a corner is blocked
+    - This can be somewhat mitigated by adding the short delay before auto capture (some number of consecutive valid frames)
 
 ## Setup
 
@@ -58,29 +68,22 @@ python main.py
 ### Configs
 Changes to parameters can be done in the `main.py` script directly. The configs can be pulled out into a YAML config file instead but for simplicity, this was done instead. 
 
-**Note:** Houghlines params are based off of a hard-coded max size of 300
+**Note:** Ratio params are based off of the max_size param
 ```python
 PARAMS = {
     "max_size": 300,  # scaled down image for faster processing
     "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
-    "inner_mask": False,  # shows an inner rectangle mask to the user
-    "mask_alpha": 0.8,  # opacity of the mask
     "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
-    "alpha_contrast": 1.5,  # higher value = more contrast (0 to 3)
-    "beta_brightness": 0,  # higher value = brighter (-100 to 100)
-    "gaussian_blur_radius": 3,  # higher radius = more blur
-    "canny_threshold1": 20,
-    "canny_threshold2": 50,
-    "dilate_structing_element_size": 4,  # larger kernel = thicker lines
-    "OTSU_threshold_min": 0,
-    "OTSU_threshold_max": 255,
-    "houghlines_threshold": 100,  # minimum intersections to detect a line
-    "houghlines_min_line_length": 80,  # minimum length of a line
-    "houghlines_max_line_gap": 10,  # maximum gap between two points to form a line
-    "area_detection_ratio": 0.1,  # ratio of the detection area to the image area
-    "corner_quality_ratio": 0.5,  # higher value = stricter corner detection
-    "min_length_ratio": 0.9,  # ratio of lines to detect to the image edges
-    "angle_threshold": 10,  # in degrees
+    "gaussian_blur_radius": 5,  # higher radius = more blur
+    "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold
+    "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold
+    "dilate_structing_element_size": 3,  # larger kernel = thicker lines
+    "houghlines_threshold_ratio": 0.3,  # minimum intersections to detect a line
+    "houghlines_min_line_length": 0.3,  # minimum length of a line
+    "houghlines_max_line_gap": 0.01,  # maximum gap between two points to form a line
+    "area_detection_ratio": 0.15,  # ratio of the detection area to the image area
+    "corner_quality_ratio": 0.9,  # higher value = stricter corner detection
+    "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
 }
 ```
 
