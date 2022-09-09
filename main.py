@@ -7,37 +7,33 @@ https://pqpo.me/2018/09/12/android-camera-real-time-scanning/"""
 import cv2
 import numpy as np
 from argparse import ArgumentParser
-import time
-from collections import defaultdict
 
 # Custom Libraries
 from Camera import Camera
 
 # Note: Ratio params are based off of the max_size param
 PARAMS = {
+    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "max_size": 300,  # scaled down image for faster processing
     "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
-    "mask_alpha": 0.8,  # opacity of the mask
-    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "gaussian_blur_radius": 5,  # higher radius = more blur
     "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold
     "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold
     "dilate_structing_element_size": 3,  # larger kernel = thicker lines
-    "houghlines_threshold_ratio": 0.2,  # minimum intersections to detect a line, 130
+    "houghlines_threshold_ratio": 0.5,  # minimum intersections to detect a line, 130
     "houghlines_min_line_length": 0.2,  # minimum length of a line, 80
     "houghlines_max_line_gap": 0.005,  # maximum gap between two points to form a line, 10
     "area_detection_ratio": 0.15,  # ratio of the detection area to the image area
     "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
-    "min_length_ratio": 0.6,  # ratio of lines to detect to the image edges
-    "angle_threshold": 5,  # in degrees, 5
     "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
 }
 
 FPS = 15
 WAIT_FRAMES = int(PARAMS["y_milliseconds"] / 1000 * FPS)
-RUNTIMES = defaultdict(list)
+
 RED = (0, 0, 255)
 GREEN = (0, 255, 0)
+MASK_ALPHA = 0.8
 
 DEBUG = False
 
@@ -87,7 +83,7 @@ def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
 
     masked_frame = img.copy()
     masked_frame[mask_area] = cv2.addWeighted(
-        img, 1 - PARAMS["mask_alpha"], mask, PARAMS["mask_alpha"], gamma=0
+        img, 1 - MASK_ALPHA, mask, MASK_ALPHA, gamma=0
     )[mask_area]
 
     img = img[
@@ -138,7 +134,6 @@ def process_image(img: np.ndarray) -> np.ndarray:
             ),
         ),
     )
-
     if SHOW_PREVIEW:
         preview_end = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
@@ -155,12 +150,11 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
 
     imgH, imgW = img.shape
     maskH, maskW, mask_border = mask_dims
+    detectionH = int(imgH * PARAMS["area_detection_ratio"] / 2)
+    detectionW = int(imgW * PARAMS["area_detection_ratio"] / 2)
     if DEBUG:
         detectionH = int(imgH * mask_border / maskH)
         detectionW = int(imgW * mask_border / maskW)
-    else:
-        detectionH = int(imgH * PARAMS["area_detection_ratio"] / 2)
-        detectionW = int(imgW * PARAMS["area_detection_ratio"] / 2)
     shift_x, shift_y = imgW - detectionW, imgH - detectionH
 
     # Section off the image into 4 areas to check for lines
@@ -252,7 +246,6 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
         highlighted_lines,
         preview_regions,
         [corner_topleft, corner_topright, corner_bottomleft, corner_bottomright],
-        [lines_left, lines_right, lines_top, lines_bottom],
     )
 
 
@@ -283,6 +276,69 @@ def check_lines(lines: np.ndarray, min_length: int, is_vertical: bool) -> bool:
     return False
 
 
+def draw_user_feedback(
+    img: np.ndarray,
+    found_corners: list[np.ndarray],
+    topleft: tuple[int],
+    bottomright: tuple[int],
+) -> np.ndarray:
+    found_topleft, found_topright, found_bottomleft, found_bottomright = found_corners
+
+    # Draw the lines on the main preview image
+    draw_line = lambda found_corner, x1, y1, x2, y2: cv2.line(
+        img,
+        (x1, y1),
+        (x2, y2),
+        GREEN if found_corner else RED,
+        3,
+    )
+
+    draw_line(
+        found_topleft or found_bottomleft,
+        topleft[1],
+        topleft[0],
+        topleft[1],
+        bottomright[0],
+    )
+    draw_line(
+        found_topright or found_bottomright,
+        bottomright[1],
+        topleft[0],
+        bottomright[1],
+        bottomright[0],
+    )
+    draw_line(
+        found_topright or found_topleft,
+        topleft[1],
+        topleft[0],
+        bottomright[1],
+        topleft[0],
+    )
+    draw_line(
+        found_bottomright or found_bottomleft,
+        topleft[1],
+        bottomright[0],
+        bottomright[1],
+        bottomright[0],
+    )
+
+    # Draw the corners on the main preview image
+    draw_circle = lambda found_corner, x, y: cv2.circle(
+        img,
+        (x, y),
+        10,
+        GREEN if found_corner else RED,
+        -1,
+    )
+
+    draw_circle(found_topleft, topleft[1], topleft[0])
+    draw_circle(found_topright, bottomright[1], topleft[0])
+    draw_circle(found_bottomleft, topleft[1], bottomright[0])
+    draw_circle(found_bottomright, bottomright[1], bottomright[0])
+
+    return img
+
+
 def main() -> None:
     app_name = "Card Scanner"
     print(f"Initialized {app_name}")
@@ -292,9 +348,6 @@ def main() -> None:
     video_src = args.cam if args.cam is not None else args.video
     global SHOW_PREVIEW
     SHOW_PREVIEW = bool(args.preview)
-
-    # Initialise FPS timings
-    prev_frame_time, cur_frame_time = 0, 0
 
     # Initialise the video capturing object
     cam = Camera(video_src, prevent_flip=True)
@@ -309,73 +362,35 @@ def main() -> None:
             print("No frame to process")
             return
 
-        # Crop and scale down the image
+        # Process image and get the corners
         img, masked_frame, mask_dims = mask_video(frame, camH, camW)
         img, preview_processed = process_image(img)
-
-        preview_lines, preview_regions, corners, lines = find_lines_and_corners(
-            img, mask_dims
-        )
-
-        lines_left, lines_right, lines_top, lines_bottom = lines
+        preview_lines, preview_regions, corners = find_lines_and_corners(img, mask_dims)
         corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = corners
-
-        # Check if the lines are vertical or horizontal enough for a card
-        min_length_H = int(img.shape[0] * PARAMS["min_length_ratio"])
-        min_length_W = int(img.shape[1] * PARAMS["min_length_ratio"])
-
-        found_left = check_lines(lines_left, min_length_H, True)
-        found_right = check_lines(lines_right, min_length_H, True)
-        found_top = check_lines(lines_top, min_length_W, False)
-        found_bottom = check_lines(lines_bottom, min_length_W, False)
-        found_lines = sum([found_left, found_right, found_top, found_bottom])
 
         # Check if the corners are found
         found_topleft = corner_topleft is not None and corner_topleft.any()
         found_topright = corner_topright is not None and corner_topright.any()
         found_bottomleft = corner_bottomleft is not None and corner_bottomleft.any()
         found_bottomright = corner_bottomright is not None and corner_bottomright.any()
-        found_corners = sum(
-            [found_topleft, found_topright, found_bottomleft, found_bottomright]
-        )
+        found_corners = [
+            found_topleft,
+            found_topright,
+            found_bottomleft,
+            found_bottomright,
+        ]
+        found_corners_num = sum(found_corners)
 
-        # Get valid edge-corner pairs
-        valid_topleft = found_topleft and found_left and found_top
-        valid_topright = found_topright and found_right and found_top
-        valid_bottomleft = found_bottomleft and found_left and found_bottom
-        valid_bottomright = found_bottomright and found_right and found_bottom
-        valid_corners_edges = sum(
-            [valid_topleft, valid_topright, valid_bottomleft, valid_bottomright]
-        )
+        # Corner coordinates
+        topleft = int(camW / 2 - mask_dims[0] / 2), int(camH / 2 - mask_dims[1] / 2)
+        bottomright = int(camW / 2 + mask_dims[0] / 2), int(camH / 2 + mask_dims[1] / 2)
 
         # Save a screenshot if a card is detected for Y milliseconds
-        if found_corners >= 3:
+        if found_corners_num >= 3:
             valid_frames += 1
             if valid_frames >= WAIT_FRAMES:
-                # Warp Perspective if all 4 corners are found
-                # if found_corners == 4:
-                #     input_pts = np.float32(
-                #         [
-                #             corner_topleft[0],
-                #             corner_topright[0],
-                #             corner_bottomright[0],
-                #             corner_bottomleft[0],
-                #         ]
-                #     )
-                #     print(input_pts)
-                #     output_pts = np.float32(
-                #         [[0, 0], [camW, 0], [0, camH], [camW, camH]]
-                #     )
-                #     print(output_pts)
-                #     transformed_mat = cv2.getPerspectiveTransform(input_pts, output_pts)
-                #     transformed_img = cv2.warpPerspective(
-                #         frame, transformed_mat, (camW, camH)
-                #     )
-                #     cv2.imshow("Transformed Image", transformed_img)
-
                 card = masked_frame[
-                    int(camW / 2 - mask_dims[0] / 2) : int(camW / 2 + mask_dims[0] / 2),
-                    int(camH / 2 - mask_dims[1] / 2) : int(camH / 2 + mask_dims[1] / 2),
+                    topleft[0] : bottomright[0], topleft[1] : bottomright[1]
                 ]
                 cv2.imshow("Auto Captured Card", card)
                 valid_frames = 0
@@ -385,74 +400,10 @@ def main() -> None:
         else:
             valid_frames = 0
 
-        # Draw the lines on the main preview image
-        draw_line = lambda found_line, x1, y1, x2, y2: cv2.line(
-            masked_frame,
-            (int(x1), int(y1)),
-            (int(x2), int(y2)),
-            GREEN if found_line else RED,
-            3,
+        # Draw the user feedback
+        masked_frame = draw_user_feedback(
+            masked_frame, found_corners, topleft, bottomright
         )
-
-        draw_line(
-            found_left,
-            camH / 2 - mask_dims[1] / 2,
-            camW / 2 - mask_dims[0] / 2,
-            camH / 2 - mask_dims[1] / 2,
-            camW / 2 + mask_dims[0] / 2,
-        )
-        draw_line(
-            found_right,
-            camH / 2 + mask_dims[1] / 2,
-            camW / 2 - mask_dims[0] / 2,
-            camH / 2 + mask_dims[1] / 2,
-            camW / 2 + mask_dims[0] / 2,
-        )
-        draw_line(
-            found_top,
-            camH / 2 - mask_dims[1] / 2,
-            camW / 2 - mask_dims[0] / 2,
-            camH / 2 + mask_dims[1] / 2,
-            camW / 2 - mask_dims[0] / 2,
-        )
-        draw_line(
-            found_bottom,
-            camH / 2 - mask_dims[1] / 2,
-            camW / 2 + mask_dims[0] / 2,
-            camH / 2 + mask_dims[1] / 2,
-            camW / 2 + mask_dims[0] / 2,
-        )
-
-        # Draw the corners on the preview image
-        draw_circle = lambda found_circle, x, y: cv2.circle(
-            masked_frame,
-            (int(x), int(y)),
-            10,
-            GREEN if found_circle is not None else RED,
-            -1,
-        )
-
-        draw_circle(
-            corner_topleft, camH / 2 - mask_dims[1] / 2, camW / 2 - mask_dims[0] / 2
-        )
-        draw_circle(
-            corner_topright, camH / 2 + mask_dims[1] / 2, camW / 2 - mask_dims[0] / 2
-        )
-        draw_circle(
-            corner_bottomleft, camH / 2 - mask_dims[1] / 2, camW / 2 + mask_dims[0] / 2
-        )
-        draw_circle(
-            corner_bottomright, camH / 2 + mask_dims[1] / 2, camW / 2 + mask_dims[0] / 2
-        )
-
-        # Calculate FPS
-        cur_frame_time = time.perf_counter()
-        fps = 1 / (cur_frame_time - prev_frame_time)
-        prev_frame_time = cur_frame_time
-        RUNTIMES["FPS"].append(fps)
-
-        if DEBUG:
-            print(f"FPS: {int(fps)}")
 
         # Show the previews with the edges highlighted
         if SHOW_PREVIEW:

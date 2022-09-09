@@ -71,18 +71,18 @@ Changes to parameters can be done in the `main.py` script directly. The configs 
 **Note:** Ratio params are based off of the max_size param
 ```python
 PARAMS = {
+    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "max_size": 300,  # scaled down image for faster processing
     "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
-    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
     "gaussian_blur_radius": 5,  # higher radius = more blur
     "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold
     "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold
     "dilate_structing_element_size": 3,  # larger kernel = thicker lines
-    "houghlines_threshold_ratio": 0.3,  # minimum intersections to detect a line
-    "houghlines_min_line_length": 0.3,  # minimum length of a line
-    "houghlines_max_line_gap": 0.01,  # maximum gap between two points to form a line
+    "houghlines_threshold_ratio": 0.5,  # minimum intersections to detect a line
+    "houghlines_min_line_length": 0.2,  # minimum length of a line
+    "houghlines_max_line_gap": 0.005,  # maximum gap between two points to form a line
     "area_detection_ratio": 0.15,  # ratio of the detection area to the image area
-    "corner_quality_ratio": 0.9,  # higher value = stricter corner detection
+    "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
     "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
 }
 ```
