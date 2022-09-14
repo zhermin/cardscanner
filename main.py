@@ -11,19 +11,19 @@ from argparse import ArgumentParser
 # Custom Libraries
 from Camera import Camera
 
-# Note: Ratio params are based off of the max_size param
+# Note: Ratio params are based off of the max_size param, actual values are in round brackets in the comments
 PARAMS = {
-    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
-    "max_size": 300,  # scaled down image for faster processing
+    "max_size": 300,  # width of scaled down image for faster processing
+    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame (180)
     "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
     "gaussian_blur_radius": 5,  # higher radius = more blur
-    "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold
-    "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold
-    "dilate_structing_element_size": 3,  # larger kernel = thicker lines
-    "houghlines_threshold_ratio": 0.5,  # minimum intersections to detect a line, 130
-    "houghlines_min_line_length": 0.2,  # minimum length of a line, 80
-    "houghlines_max_line_gap": 0.005,  # maximum gap between two points to form a line, 10
-    "area_detection_ratio": 0.15,  # ratio of the detection area to the image area
+    "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold (9)
+    "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold (30)
+    "dilate_kernel_size": 3,  # larger kernel = thicker lines
+    "houghline_threshold_ratio": 0.5,  # minimum intersections to detect a line (150)
+    "houghline_minlinelength_ratio": 0.2,  # minimum length of a line (60)
+    "houghline_maxlinegap_ratio": 0.005,  # maximum gap between two points to form a line (2)
+    "area_detection_ratio": 0.15,  # ratio of the detection area to the image area (45)
     "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
     "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
 }
@@ -109,12 +109,12 @@ def process_image(img: np.ndarray) -> np.ndarray:
     if SHOW_PREVIEW:
         preview_grayscale = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-    # Apply Gaussian blur to the image to reduce noise
+    # Apply Gaussian blur to reduce noise
     img = cv2.GaussianBlur(
         img, (PARAMS["gaussian_blur_radius"], PARAMS["gaussian_blur_radius"]), 0
     )
 
-    # Apply Canny edge detection to the image to find edges
+    # Apply Canny edge detection to find edges
     img = cv2.Canny(
         img,
         int(PARAMS["max_size"] * PARAMS["canny_lowerthreshold_ratio"]),
@@ -178,7 +178,7 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
         get_houghlines, [region_left, region_right, region_top, region_bottom]
     )
 
-    # Use Shi-Tomasi corner detection to find corners in the image
+    # Draw the found lines on the preview image and for corner detection
     highlighted_lines = np.zeros((imgH, imgW, 3), np.uint8)
     preview_regions = np.zeros((imgH, imgW, 3), np.uint8)
 
@@ -208,6 +208,7 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
     region_bottomleft = corner_frame[shift_y:, :detectionW]
     region_bottomright = corner_frame[shift_y:, shift_x:]
 
+    # Use Shi-Tomasi corner detection to find corners in the image
     get_corners = lambda region: cv2.goodFeaturesToTrack(
         region, 1, PARAMS["corner_quality_ratio"], 20
     )

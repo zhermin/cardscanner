@@ -68,22 +68,22 @@ python main.py
 ### Configs
 Changes to parameters can be done in the `main.py` script directly. The configs can be pulled out into a YAML config file but for simplicity, this was done instead. 
 
-**Note:** Ratio params are based off of the max_size param
+**Note:** Ratio params are based off of the `max_size` param, actual values are in round brackets in the comments
 ```python
 PARAMS = {
-    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame
-    "max_size": 300,  # scaled down image for faster processing
-    "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
-    "gaussian_blur_radius": 5,  # higher radius = more blur
-    "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold
-    "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold
-    "dilate_structing_element_size": 3,  # larger kernel = thicker lines
-    "houghlines_threshold_ratio": 0.5,  # minimum intersections to detect a line
-    "houghlines_min_line_length": 0.2,  # minimum length of a line
-    "houghlines_max_line_gap": 0.005,  # maximum gap between two points to form a line
-    "area_detection_ratio": 0.15,  # ratio of the detection area to the image area
-    "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
-    "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
+    "max_size": 300,                       # width of scaled down image for faster processing
+    "frame_scaling_factor": 0.6,           # ratio of unmasked area to the entire frame (180)
+    "mask_aspect_ratio": (86, 54),         # CR80 standard card size is 86mm x 54mm
+    "gaussian_blur_radius": 5,             # higher radius = more blur
+    "canny_lowerthreshold_ratio": 0.03,    # rejected if pixel gradient below lower threshold (9)
+    "canny_upperthreshold_ratio": 0.10,    # accepted if pixel gradient above upper threshold (30)
+    "dilate_structing_element_size": 3,    # larger kernel = thicker lines
+    "houghline_threshold_ratio": 0.5,      # minimum intersections to detect a line (150)
+    "houghline_minlinelength_ratio": 0.2,  # minimum length of a line (60)
+    "houghline_maxlinegap_ratio": 0.005,   # maximum gap between two points to form a line (2)
+    "area_detection_ratio": 0.15,          # ratio of the detection area to the image area (45)
+    "corner_quality_ratio": 0.99,          # higher value = stricter corner detection
+    "y_milliseconds": 200,                 # number of milliseconds to wait for valid frames
 }
 ```
 
