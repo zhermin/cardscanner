@@ -129,8 +129,8 @@ def process_image(img: np.ndarray) -> np.ndarray:
         cv2.getStructuringElement(
             cv2.MORPH_RECT,
             (
-                PARAMS["dilate_structing_element_size"],
-                PARAMS["dilate_structing_element_size"],
+                PARAMS["dilate_kernel_size"],
+                PARAMS["dilate_kernel_size"],
             ),
         ),
     )
@@ -168,10 +168,10 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
         region,
         1,
         np.pi / 180,
-        int(PARAMS["max_size"] * PARAMS["houghlines_threshold_ratio"]),
+        int(PARAMS["max_size"] * PARAMS["houghline_minlinelength_ratio"]),
         np.array([]),
-        int(PARAMS["max_size"] * PARAMS["houghlines_min_line_length"]),
-        int(PARAMS["max_size"] * PARAMS["houghlines_max_line_gap"]),
+        int(PARAMS["max_size"] * PARAMS["houghline_minlinelength_ratio"]),
+        int(PARAMS["max_size"] * PARAMS["houghline_maxlinegap_ratio"]),
     )
 
     lines_left, lines_right, lines_top, lines_bottom = map(
