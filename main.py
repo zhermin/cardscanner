@@ -229,16 +229,18 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
     region_top = img[:detectionH, :]
     region_bottom = img[shift_y:, :]
 
-    # Use Probabilistic Hough Transform to find lines in the image
-    get_houghlines = lambda region: cv2.HoughLinesP(
-        region,
-        1,
-        np.pi / 180,
-        int(PARAMS["max_size"] * PARAMS["houghline_minlinelength_ratio"]),
-        np.array([]),
-        int(PARAMS["max_size"] * PARAMS["houghline_minlinelength_ratio"]),
-        int(PARAMS["max_size"] * PARAMS["houghline_maxlinegap_ratio"]),
-    )
+    # Use Hough Lines Transform to find lines in the image
+    def get_houghlines(region: np.ndarray) -> np.ndarray:
+        """Use the less efficient Hough Lines Transform to find lines in the image
+        HoughLinesP() is faster but returns Cartesian instead of polar coordinates
+        Because many lines will be found, return only 5 of them to reduce processing time"""
+        lines = cv2.HoughLines(
+            region,
+            1,
+            np.pi / 180,
+            int(PARAMS["max_size"] * PARAMS["houghline_threshold_ratio"]),
+        )
+        return lines[:5] if lines is not None else np.array([])
 
     lines_left, lines_right, lines_top, lines_bottom = map(
         get_houghlines, [region_left, region_right, region_top, region_bottom]
@@ -254,54 +256,88 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
     preview_regions[shift_y:, :] = cv2.cvtColor(region_bottom, cv2.COLOR_GRAY2BGR)
 
     def draw_lines(lines: np.ndarray, shift_x: int = 0, shift_y: int = 0) -> None:
-        if lines is not None and lines.any():
+        """Draw the lines by getting the Cartesian coordinates from the polar coordinates
+
+        OpenCV Tutorial to Draw Lines
+        https://docs.opencv.org/3.4/d9/db0/tutorial_hough_lines.html
+
+        Explanation for the values 1000 added and subtracted in x1, y1, x2, y2
+        https://stackoverflow.com/questions/18782873/houghlines-transform-in-opencv
+        """
+        if lines.any():
             for line in lines:
-                for x1, y1, x2, y2 in line:
-                    x1, x2 = x1 + shift_x, x2 + shift_x
-                    y1, y2 = y1 + shift_y, y2 + shift_y
-                    cv2.line(highlighted_lines, (x1, y1), (x2, y2), RED, 1)
-                    cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 2)
+                rho, theta = line[0]
+                a, b = np.cos(theta), np.sin(theta)
+                x0, y0 = a * rho, b * rho
+                x1, y1 = int(x0 + 1000 * (-b)) + shift_x, int(y0 + 1000 * a) + shift_y
+                x2, y2 = int(x0 - 1000 * (-b)) + shift_x, int(y0 - 1000 * a) + shift_y
+
+                cv2.line(highlighted_lines, (x1, y1), (x2, y2), RED, 1)
+                cv2.line(preview_regions, (x1, y1), (x2, y2), RED, 1)
 
     draw_lines(lines_left)
     draw_lines(lines_right, shift_x=shift_x)
     draw_lines(lines_top)
     draw_lines(lines_bottom, shift_y=shift_y)
 
-    # Section off the image into the 4 corner areas to check for card corners
-    corner_frame = cv2.cvtColor(highlighted_lines, cv2.COLOR_BGR2GRAY)
-    region_topleft = corner_frame[:detectionH, :detectionW]
-    region_topright = corner_frame[:detectionH, shift_x:]
-    region_bottomleft = corner_frame[shift_y:, :detectionW]
-    region_bottomright = corner_frame[shift_y:, shift_x:]
+    def intersection(line1: np.ndarray, line2: np.ndarray) -> list[int]:
+        """Finds the intersection of two lines given in Hesse normal form
+        See https://stackoverflow.com/a/416559/19767101
+        """
+        rho1, theta1 = line1[0]
+        rho2, theta2 = line2[0]
+        a, b = np.cos(theta1), np.sin(theta1)
+        c, d = np.cos(theta2), np.sin(theta2)
+        g = a * d - b * c
+        if g == 0:  # if lines are parallel, there will be no intersection
+            return None
+        x0, y0 = (d * rho1 - b * rho2) / g, (-c * rho1 + a * rho2) / g
+        x0, y0 = int(np.round(x0)), int(np.round(y0))
+        return [x0, y0]
 
-    # Use Shi-Tomasi corner detection to find corners in the image
-    get_corners = lambda region: cv2.goodFeaturesToTrack(
-        region, 1, PARAMS["corner_quality_ratio"], 20
-    )
+    def find_corners(all_lines: tuple[np.ndarray]) -> np.ndarray:
+        """Find the corners, which are the intersections between two sides' lines
+        If multiple corners are found, return the average coordinates of the corners"""
+        lines1, lines2 = all_lines
+        if not lines1.any() or not lines2.any():
+            return np.array([])
+
+        corners = []
+        for line1 in lines1:
+            for line2 in lines2:
+                corner = intersection(line1, line2)
+                if corner is not None and 0 < corner[0] < imgW and 0 < corner[1] < imgH:
+                    corners.append(corner)
+        return np.array(corners).mean(axis=0) if corners else np.array([])
 
     corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = map(
-        get_corners,
-        [region_topleft, region_topright, region_bottomleft, region_bottomright],
+        find_corners,
+        [
+            (lines_top, lines_left),
+            (lines_top, lines_right),
+            (lines_bottom, lines_left),
+            (lines_bottom, lines_right),
+        ],
     )
 
     # Draw the found lines and corners on a small preview window
     if SHOW_PREVIEW:
-        if corner_topleft is not None:
-            x, y = corner_topleft.astype(int).ravel()
+        if corner_topleft.any():
+            x, y = corner_topleft.astype(int)
             cv2.circle(highlighted_lines, (x, y), 5, GREEN, -1)
             cv2.circle(preview_regions, (x, y), 5, GREEN, -1)
-        if corner_topright is not None:
-            x, y = corner_topright.astype(int).ravel()
+        if corner_topright.any():
+            x, y = corner_topright.astype(int)
             x += shift_x
             cv2.circle(highlighted_lines, (x, y), 5, GREEN, -1)
             cv2.circle(preview_regions, (x, y), 5, GREEN, -1)
-        if corner_bottomleft is not None:
-            x, y = corner_bottomleft.astype(int).ravel()
+        if corner_bottomleft.any():
+            x, y = corner_bottomleft.astype(int)
             y += shift_y
             cv2.circle(highlighted_lines, (x, y), 5, GREEN, -1)
             cv2.circle(preview_regions, (x, y), 5, GREEN, -1)
-        if corner_bottomright is not None:
-            x, y = corner_bottomright.astype(int).ravel()
+        if corner_bottomright.any():
+            x, y = corner_bottomright.astype(int)
             x += shift_x
             y += shift_y
             cv2.circle(highlighted_lines, (x, y), 5, GREEN, -1)
@@ -314,33 +350,6 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
         preview_regions,
         [corner_topleft, corner_topright, corner_bottomleft, corner_bottomright],
     )
-
-
-def check_lines(lines: np.ndarray, min_length: int, is_vertical: bool) -> bool:
-    """Check if the lines are long enough and angled correctly to count as a line"""
-
-    if lines is None or not lines.any():
-        return False
-
-    for line in lines:
-        for x1, y1, x2, y2 in line:
-            width, height = abs(x2 - x1), abs(y2 - y1)
-
-            dist = width**2 + height**2
-            if dist < min_length**2:
-                continue
-
-            if x1 == x2:
-                return True
-
-            angle = np.arctan2(height, width) * 180 / np.pi
-            if is_vertical:
-                if abs(90 - angle) < PARAMS["angle_threshold"]:
-                    return True
-            else:
-                if abs(angle) < PARAMS["angle_threshold"]:
-                    return True
-    return False
 
 
 def draw_user_feedback(
@@ -442,15 +451,14 @@ def main() -> None:
         corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = corners
 
         # Check if the corners are found
-        found_topleft = corner_topleft is not None and corner_topleft.any()
-        found_topright = corner_topright is not None and corner_topright.any()
-        found_bottomleft = corner_bottomleft is not None and corner_bottomleft.any()
-        found_bottomright = corner_bottomright is not None and corner_bottomright.any()
         found_corners = [
-            found_topleft,
-            found_topright,
-            found_bottomleft,
-            found_bottomright,
+            corner.any()
+            for corner in [
+                corner_topleft,
+                corner_topright,
+                corner_bottomleft,
+                corner_bottomright,
+            ]
         ]
         found_corners_num = sum(found_corners)
 
