@@ -25,11 +25,8 @@ PARAMS = {
     "houghline_maxlinegap_ratio": 0.005,  # maximum gap between two points to form a line (2)
     "area_detection_ratio": 0.15,  # ratio of the detection area to the image area (45)
     "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
-    "y_milliseconds": 200,  # number of milliseconds to wait for valid frames
+    "wait_frames": 0,  # number of consecutive valid frames to wait
 }
-
-FPS = 15
-WAIT_FRAMES = int(PARAMS["y_milliseconds"] / 1000 * FPS)
 
 RED = (0, 0, 255)
 GREEN = (0, 255, 0)
@@ -51,6 +48,75 @@ def parse_args() -> ArgumentParser:
         "--file", type=str, default=None, help="Path to an image or video to process"
     )
     return parser.parse_args()
+
+
+def create_trackbars() -> None:
+    cv2.namedWindow("Parameters", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Parameters", 640, 0)
+    cv2.createTrackbar(
+        "Gaussian Blur Radius",
+        "Parameters",
+        PARAMS["gaussian_blur_radius"],
+        21,
+        lambda x: print(f"Gaussian Blur Radius: {x}"),
+    )
+    cv2.createTrackbar(
+        "Canny Lower Threshold Ratio",
+        "Parameters",
+        int(PARAMS["canny_lowerthreshold_ratio"] * 100),
+        100,
+        lambda x: print(f"Canny Lower Threshold Ratio: {x / 100}"),
+    )
+    cv2.createTrackbar(
+        "Canny Upper Threshold Ratio",
+        "Parameters",
+        int(PARAMS["canny_upperthreshold_ratio"] * 100),
+        100,
+        lambda x: print(f"Canny Upper Threshold Ratio: {x / 100}"),
+    )
+    cv2.createTrackbar(
+        "Dilate Kernel Size",
+        "Parameters",
+        PARAMS["dilate_kernel_size"],
+        21,
+        lambda x: print(f"Dilate Kernel Size: {x}"),
+    )
+    cv2.createTrackbar(
+        "Houghline Threshold Ratio",
+        "Parameters",
+        int(PARAMS["houghline_threshold_ratio"] * 100),
+        100,
+        lambda x: print(f"Houghline Threshold Ratio: {x / 100}"),
+    )
+    cv2.createTrackbar(
+        "Area Detection Ratio",
+        "Parameters",
+        int(PARAMS["area_detection_ratio"] * 100),
+        100,
+        lambda x: print(f"Area Detection Ratio: {x / 100}"),
+    )
+
+
+def update_params() -> None:
+    PARAMS["gaussian_blur_radius"] = cv2.getTrackbarPos(
+        "Gaussian Blur Radius", "Parameters"
+    )
+    PARAMS["gaussian_blur_radius"] += int(not (PARAMS["gaussian_blur_radius"] % 2))
+    PARAMS["canny_lowerthreshold_ratio"] = (
+        cv2.getTrackbarPos("Canny Lower Threshold Ratio", "Parameters") / 100
+    )
+    PARAMS["canny_upperthreshold_ratio"] = (
+        cv2.getTrackbarPos("Canny Upper Threshold Ratio", "Parameters") / 100
+    )
+    PARAMS["dilate_kernel_size"] = cv2.getTrackbarPos(
+        "Dilate Kernel Size", "Parameters"
+    )
+    PARAMS["houghline_threshold_ratio"] = (
+        cv2.getTrackbarPos("Houghline Threshold Ratio", "Parameters") / 100
+    )
+    PARAMS["area_detection_ratio"] = (
+        cv2.getTrackbarPos("Area Detection Ratio", "Parameters") / 100
+    )
 
 
 def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
@@ -353,6 +419,8 @@ def main() -> None:
     # Initialise the video capturing object
     cam = Camera(video_src, prevent_flip=True)
     camH, camW = cam.get_frame_size()
+    if SHOW_PREVIEW:
+        create_trackbars()
 
     # Valid Frames Counter
     valid_frames = 0
@@ -362,6 +430,10 @@ def main() -> None:
         if not frame_got:
             print("No frame to process")
             return
+
+        # Update PARAMS with trackbar values
+        if SHOW_PREVIEW:
+            update_params()
 
         # Process image and get the corners
         img, masked_frame, mask_dims = mask_video(frame, camH, camW)
@@ -386,20 +458,11 @@ def main() -> None:
         topleft = int(camW / 2 - mask_dims[0] / 2), int(camH / 2 - mask_dims[1] / 2)
         bottomright = int(camW / 2 + mask_dims[0] / 2), int(camH / 2 + mask_dims[1] / 2)
 
-        # Save a screenshot if a card is detected for Y milliseconds
+        # Save card screenshot region first
         if found_corners_num >= 3:
-            valid_frames += 1
-            if valid_frames >= WAIT_FRAMES:
-                card = masked_frame[
-                    topleft[0] : bottomright[0], topleft[1] : bottomright[1]
-                ]
-                cv2.imshow("Auto Captured Card", card)
-                valid_frames = 0
-                cv2.waitKey(0)
-                cv2.destroyWindow("Auto Captured Card")
-                # cv2.imwrite(f"card-{time.time()}.png", card)
-        else:
-            valid_frames = 0
+            card = masked_frame.copy()[
+                topleft[0] : bottomright[0], topleft[1] : bottomright[1]
+            ]
 
         # Draw the user feedback
         masked_frame = draw_user_feedback(
@@ -419,6 +482,18 @@ def main() -> None:
             )
             masked_frame = np.hstack([preview, masked_frame])
         cv2.imshow(app_name, masked_frame)
+
+        # Save a screenshot if a card is detected for Y milliseconds
+        if found_corners_num >= 3:
+            valid_frames += 1
+            if valid_frames >= PARAMS["wait_frames"]:
+                valid_frames = 0
+                cv2.imshow("Auto Captured Card", card)
+                cv2.waitKey(0)
+                cv2.destroyWindow("Auto Captured Card")
+                # cv2.imwrite(f"card-{time.time()}.png", card)
+        else:
+            valid_frames = 0
 
         # Press ESC or "q" to quit
         if cv2.waitKey(1) == 27 or cv2.waitKey(1) == ord("q"):

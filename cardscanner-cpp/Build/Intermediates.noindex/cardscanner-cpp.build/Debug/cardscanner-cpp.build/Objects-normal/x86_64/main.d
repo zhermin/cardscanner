@@ -1,5 +1,5 @@
 dependencies: \
-  /Users/zac.tamzm/Desktop/cardscanner-cpp/cardscanner-cpp/main.cpp \
+  /Users/zac.tamzm/Desktop/cardscanner/cardscanner-cpp/cardscanner-cpp/main.cpp \
   /usr/local/Cellar/opencv/4.6.0/include/opencv4/opencv2/highgui.hpp \
   /usr/local/Cellar/opencv/4.6.0/include/opencv4/opencv2/core.hpp \
   /usr/local/Cellar/opencv/4.6.0/include/opencv4/opencv2/core/cvdef.h \

@@ -2,7 +2,7 @@
   "_buildCommand2" : {
     "command" : "build",
     "skipDependencies" : false,
-    "style" : "buildOnly"
+    "style" : "buildAndRun"
   },
   "buildCommand" : "build",
   "configuredTargets" : [
@@ -10,12 +10,12 @@
       "guid" : "a9887b9135678d6b2db3af0f9167dc5628bba1b30512da284a82740806f5a753"
     }
   ],
-  "containerPath" : "/Users/zac.tamzm/Desktop/cardscanner-cpp/cardscanner-cpp.xcodeproj",
+  "containerPath" : "/Users/zac.tamzm/Desktop/cardscanner/cardscanner-cpp/cardscanner-cpp.xcodeproj",
   "continueBuildingAfterErrors" : false,
   "enableIndexBuildArena" : false,
   "hideShellScriptEnvironment" : false,
   "parameters" : {
-    "action" : "docbuild",
+    "action" : "build",
     "activeArchitecture" : "x86_64",
     "activeRunDestination" : {
       "disableOnlyActiveArch" : false,
@@ -29,13 +29,13 @@
       "targetArchitecture" : "x86_64"
     },
     "arenaInfo" : {
-      "buildIntermediatesPath" : "/Users/zac.tamzm/Desktop/cardscanner-cpp/Build/Intermediates.noindex",
-      "buildProductsPath" : "/Users/zac.tamzm/Desktop/cardscanner-cpp/Build/Products",
+      "buildIntermediatesPath" : "/Users/zac.tamzm/Desktop/cardscanner/cardscanner-cpp/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/zac.tamzm/Desktop/cardscanner/cardscanner-cpp/Build/Products",
       "derivedDataPath" : "/Users/zac.tamzm/Library/Developer/Xcode/DerivedData",
-      "indexDataStoreFolderPath" : "/Users/zac.tamzm/Library/Developer/Xcode/DerivedData/cardscanner-cpp-cxzsabuphuxdysepvfxhwfhnjvuo/Index/DataStore",
+      "indexDataStoreFolderPath" : "/Users/zac.tamzm/Library/Developer/Xcode/DerivedData/cardscanner-cpp-djrzgukmckkeddaovxloijypbbtq/Index/DataStore",
       "indexEnableDataStore" : true,
-      "indexPCHPath" : "/Users/zac.tamzm/Library/Developer/Xcode/DerivedData/cardscanner-cpp-cxzsabuphuxdysepvfxhwfhnjvuo/Index/PrecompiledHeaders",
-      "pchPath" : "/Users/zac.tamzm/Desktop/cardscanner-cpp/Build/Intermediates.noindex/PrecompiledHeaders"
+      "indexPCHPath" : "/Users/zac.tamzm/Library/Developer/Xcode/DerivedData/cardscanner-cpp-djrzgukmckkeddaovxloijypbbtq/Index/PrecompiledHeaders",
+      "pchPath" : "/Users/zac.tamzm/Desktop/cardscanner/cardscanner-cpp/Build/Intermediates.noindex/PrecompiledHeaders"
     },
     "configurationName" : "Debug",
     "overrides" : {

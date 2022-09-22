@@ -28,7 +28,7 @@ static struct {
   float area_detection_ratio =
       0.10; // ratio of the detection area to the image area (30)
   float corner_quality_ratio = 0.99; // higher value = stricter corner detection
-  float y_milliseconds = 200; // number of milliseconds to wait for valid frames
+  int wait_frames = 0; // number of consecutive valid frames to wait
 } PARAMS;
 
 Mat process_image(Mat &img) {
@@ -177,7 +177,7 @@ int find_corners(Mat &img_processed) {
     imshow("Highlighted Lines", highlighted_lines);
   };
 
-  return (corner_topleft.size() + corner_topright.size() +
+  return (int)(corner_topleft.size() + corner_topright.size() +
           corner_bottomleft.size() + corner_bottomright.size());
 }
 
@@ -189,8 +189,6 @@ int main() {
   Mat img;
 
   // Calculate number of frames to wait for valid frames
-  float FPS = 30;
-  int WAIT_FRAMES = (int)(PARAMS.y_milliseconds / 1000 * FPS);
   int valid_frames = 0;
 
   cout << "Initialized " << app_name << "! Press ESC to quit" << endl;
@@ -235,12 +233,12 @@ int main() {
     // after Y milliseconds (calculated from 30 FPS in this implementation)
     if (corner_count >= 3) {
       valid_frames++;
-      if (valid_frames >= WAIT_FRAMES) {
+      if (valid_frames >= PARAMS.wait_frames) {
         valid_frames = 0;
         imshow("Auto Captured Card", cropped);
         waitKey(0);
         destroyWindow("Auto Captured Card");
-        imwrite("24card.png", img);
+//        imwrite("card.png", img);
       }
     } else {
       valid_frames = 0;

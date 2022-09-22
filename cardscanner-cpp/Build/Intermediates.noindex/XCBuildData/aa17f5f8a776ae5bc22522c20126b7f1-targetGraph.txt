@@ -1,2 +1,0 @@
-Target dependency graph (1 target)
-cardscanner-cpp in cardscanner-cpp, no dependencies
