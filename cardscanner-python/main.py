@@ -1,15 +1,13 @@
-"""Simple proof-of-concept real-time card scanner written in Python
-
-Implementation details were taken from the docs by PQPO at:
-https://pqpo.me/2018/09/12/android-camera-real-time-scanning/"""
+"""Real-time card scanner using Python and OpenCV"""
 
 # External Libraries
+import time
 import cv2
 import numpy as np
 from argparse import ArgumentParser
 
 # Custom Libraries
-from Camera import Camera
+from src.Camera import Camera
 
 # Note: Ratio params are based off of the max_size param, actual values are in round brackets in the comments
 PARAMS = {
@@ -459,10 +457,9 @@ def main() -> None:
         bottomright = int(camW / 2 + mask_dims[0] / 2), int(camH / 2 + mask_dims[1] / 2)
 
         # Save card screenshot region first
-        if found_corners_num >= 3:
-            card = masked_frame.copy()[
-                topleft[0] : bottomright[0], topleft[1] : bottomright[1]
-            ]
+        card = masked_frame.copy()[
+            topleft[0] : bottomright[0], topleft[1] : bottomright[1]
+        ]
 
         # Draw the user feedback
         masked_frame = draw_user_feedback(
@@ -489,14 +486,19 @@ def main() -> None:
             if valid_frames >= PARAMS["wait_frames"]:
                 valid_frames = 0
                 cv2.imshow("Auto Captured Card", card)
-                cv2.waitKey(0)
-                cv2.destroyWindow("Auto Captured Card")
-                # cv2.imwrite(f"card-{time.time()}.png", card)
+                key = cv2.waitKey(0)
+                if key == ord("s"):
+                    cv2.imwrite(f"card-{time.time()}.png", card)
+                else:
+                    cv2.destroyWindow("Auto Captured Card")
         else:
             valid_frames = 0
 
-        # Press ESC or "q" to quit
-        if cv2.waitKey(1) == 27 or cv2.waitKey(1) == ord("q"):
+        # Press "s" to save a screenshot, ESC or "q" to quit
+        key = cv2.waitKey(1)
+        if key == ord("s"):
+            cv2.imwrite(f"../cardscanner-custom/assets/card1.png", card)
+        elif key == 27 or key == ord("q"):
             print(f"Shutting Down {app_name}...")
             cam.release()
             return

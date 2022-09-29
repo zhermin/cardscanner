@@ -52,7 +52,7 @@ The target of this IC Edge Detection model is to allow **"at least 3 corners of 
 **Note:** Due to the low resolution of the webcam and low quality of the printed KTP card used in the video demos below, the words on the sample KTP card will not be very legible
 
 |     |     |     |     |     |
-| --- | --- | --- | --- | --- |  
+| --- | --- | --- | --- | --- |
 | Scenario | Condition(s) | Expected Handling (Auto-Capture Decision) | Demo Video | Remarks |
 | Happy Flow | All 5 critical requirements are met | Auto-capture should be triggered as it fulfils all 5 critical requirements:<br><br>1. Card is ID e-KTP; AND<br>2. Card is generally free of quality issue (not blurry, not blocked); AND<br>3. At least 3 corners of the card are visible within the guided viewfinder; AND<br>4. Well-lit condition (good lighting; not too dark, not too bright that it diminishes card details); AND<br>5. Card position is in a proper angle<br><br>Auto-capture should be triggered | ![Scenario 1](assets/demo/scenario1-happyflow.mov) |     |
 | At least 3 corners of the card are visible within the guided viewfinder | Only 1 corner blocked | Auto-capture should be triggered as it fulfils all 5 critical requirements | ![Scenario 2](assets/demo/scenario2-blocked1.mov) | The model will auto-capture even if the object is blocking the center of the card with the key information as long as it detects 3 corners |
@@ -110,7 +110,7 @@ The target of this IC Edge Detection model is to allow **"at least 3 corners of 
         * At most 1 corner (set parameter) can be found by this algorithm
         * This "corner" detection algorithm does not necessarily detect corners with a certain angle
         * Rather, it finds regions of interest based on the pixel differences illustrated below, where red areas are equivalent to the "edges" and the entire green region is considered a corner if the region score _R_ is above a set parameter
-        ![Shi-Tomasi Theory](https://opencv24-python-tutorials.readthedocs.io/en/latest/_images/shitomasi_space.png)
+            * ![Shi-Tomasi Theory](https://opencv24-python-tutorials.readthedocs.io/en/latest/_images/shitomasi_space.png)
         * Hence, even for straight-looking lines, it may sometimes falsely identify it as a corner regardless of how strict the corner detection parameter is set (from 0 to 1)
         * The Shi-Tomasi algorithm is an improved "corner" detection algorithm to the Harris algorithm, although both face the same problems stated above
 6. Card is found if at least 3 corners found and be considered a "valid frame"
@@ -166,7 +166,7 @@ PARAMS = {
     "houghline_maxlinegap_ratio": 0.005,   # maximum gap between two points to form a line (2)
     "area_detection_ratio": 0.15,          # ratio of the detection area to the image area (45)
     "corner_quality_ratio": 0.99,          # higher value = stricter corner detection
-    "y_milliseconds": 200,                 # number of milliseconds to wait for valid frames
+    "wait_frames": 0,                      # number of consecutive valid frames to wait
 }
 ```
 
@@ -180,7 +180,7 @@ For the model performance evaluation, we will target these metrics:
 * Stability: NOT auto-capturing when it is not supposed to ("Predicted" Negatives)
 
 |     |     |     |     |     |     |
-| --- | --- | --- | --- | --- | --- |  
+| --- | --- | --- | --- | --- | --- |
 |     | Pure Model Size | Model Size with OpenCV Lib | Speed | Accuracy | Stability |
 | Edge Detection v0.1 |     |     |     |     |     |
 | Edge Detection v0.2 |     |     |     |     |     |
