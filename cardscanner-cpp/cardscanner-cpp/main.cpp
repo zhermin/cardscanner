@@ -7,7 +7,7 @@ using namespace cv;
 using namespace std;
 
 // Note: Ratio params are based off `max_size`, actual values are in brackets
-static struct {
+struct {
   bool debug = false;   // set to true to show found lines and corners
   float max_size = 300; // max width of scaled down image
   float frame_scaling_factor =
@@ -178,7 +178,7 @@ int find_corners(Mat &img_processed) {
   };
 
   return (int)(corner_topleft.size() + corner_topright.size() +
-          corner_bottomleft.size() + corner_bottomright.size());
+               corner_bottomleft.size() + corner_bottomright.size());
 }
 
 int main() {
@@ -238,7 +238,7 @@ int main() {
         imshow("Auto Captured Card", cropped);
         waitKey(0);
         destroyWindow("Auto Captured Card");
-//        imwrite("card.png", img);
+        //        imwrite("card.png", img);
       }
     } else {
       valid_frames = 0;

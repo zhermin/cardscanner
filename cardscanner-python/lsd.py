@@ -17,7 +17,7 @@ PARAMS = {
     "houghline_threshold_ratio": 0.5,  # minimum intersections to detect a line (150)
     "houghline_minlinelength_ratio": 0.2,  # minimum length of a line (60)
     "houghline_maxlinegap_ratio": 0.005,  # maximum gap between two points to form a line (2)
-    "area_detection_ratio": 0.15,  # ratio of the detection area to the image area (45)
+    "area_detection_ratio": 0.2,  # ratio of the detection area to the image area (45)
     "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
     "wait_frames": 0,  # number of consecutive valid frames to wait
 }
@@ -182,5 +182,70 @@ def main():
             return
 
 
+def test():
+    """OpenCV Functions Used:
+    1. gaussian blur
+    2. LSD
+    3. goodFeaturesToTrack
+    """
+
+    img = cv2.imread("../cardscanner-custom/assets/card2.png")
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    imgH, imgW = gray.shape
+    detectionH = int(imgH * PARAMS["area_detection_ratio"] / 2)
+    detectionW = int(imgW * PARAMS["area_detection_ratio"] / 2)
+    shift_x, shift_y = imgW - detectionW, imgH - detectionH
+
+    # Use LSD to detect lines
+    gray = cv2.GaussianBlur(
+        gray, (PARAMS["gaussian_blur_radius"], PARAMS["gaussian_blur_radius"]), 0
+    )
+
+    lsd = cv2.createLineSegmentDetector(0)
+    lines = lsd.detect(gray)[0]
+
+    # Draw lines on new blank image
+    drawn_img = np.zeros(gray.shape, dtype=np.uint8)
+    if lines is not None and lines.any():
+        for line in lines:
+            x1, y1, x2, y2 = map(int, line[0])
+            cv2.line(drawn_img, (x1, y1), (x2, y2), 255, 1)
+
+    # Section off the image into 4 areas to check for lines
+    region_left = drawn_img[:detectionH, :detectionW]  # drawn_img[:, :detectionW]
+    region_right = drawn_img[:detectionH, shift_x:]  # drawn_img[:, shift_x:]
+    region_top = drawn_img[shift_y:, :detectionW]  # drawn_img[:detectionH, :]
+    region_bottom = drawn_img[shift_y:, shift_x:]  # drawn_img[shift_y:, :]
+    drawn_img = cv2.cvtColor(drawn_img, cv2.COLOR_GRAY2BGR)
+
+    # Use Shi-Tomasi corner detection to find corners in the image
+    get_corners = lambda region: cv2.goodFeaturesToTrack(region, 100, 0.1, 0)
+
+    corner_left, corner_right, corner_top, corner_bottom = map(
+        get_corners,
+        [region_left, region_right, region_top, region_bottom],
+    )
+
+    for corner_region, (shift_x, shift_y) in zip(
+        [corner_left, corner_right, corner_top, corner_bottom],
+        [(0, 0), (shift_x, 0), (0, shift_y), (shift_x, shift_y)],
+    ):
+        if corner_region is None or not corner_region.any():
+            continue
+        for corner in corner_region:
+            print(shift_x, shift_y)
+            x, y = corner.astype(int).ravel()
+            x += shift_x
+            y += shift_y
+            cv2.circle(img, (x, y), 3, (0, 255, 0), -1)
+            cv2.circle(drawn_img, (x, y), 3, (0, 255, 0), -1)
+
+    cv2.imshow("Original", img)
+    cv2.imshow("Drawn Lines", drawn_img)
+    cv2.waitKey(0)
+
+
 if __name__ == "__main__":
-    main()
+    # main()
+    test()
