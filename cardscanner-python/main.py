@@ -17,7 +17,7 @@ PARAMS = {
     "gaussian_blur_radius": 5,  # higher radius = more blur
     "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold (9)
     "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold (30)
-    "dilate_kernel_size": 3,  # larger kernel = thicker lines
+    "dilate_kernel_size": 5,  # larger kernel = thicker lines
     "houghline_threshold_ratio": 0.5,  # minimum intersections to detect a line (150)
     "houghline_minlinelength_ratio": 0.2,  # minimum length of a line (60)
     "houghline_maxlinegap_ratio": 0.005,  # maximum gap between two points to form a line (2)
@@ -178,15 +178,6 @@ def process_image(img: np.ndarray) -> np.ndarray:
         img, (PARAMS["gaussian_blur_radius"], PARAMS["gaussian_blur_radius"]), 0
     )
 
-    # Apply Canny edge detection to find edges
-    img = cv2.Canny(
-        img,
-        int(PARAMS["max_size"] * PARAMS["canny_lowerthreshold_ratio"]),
-        int(PARAMS["max_size"] * PARAMS["canny_upperthreshold_ratio"]),
-    )
-    if SHOW_PREVIEW:
-        preview_findlines = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-
     # Dilate the image to strengthen lines and edges
     img = cv2.dilate(
         img,
@@ -199,13 +190,20 @@ def process_image(img: np.ndarray) -> np.ndarray:
         ),
     )
     if SHOW_PREVIEW:
-        preview_end = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        preview_morph = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    # Apply Canny edge detection to find edges
+    img = cv2.Canny(
+        img,
+        int(PARAMS["max_size"] * PARAMS["canny_lowerthreshold_ratio"]),
+        int(PARAMS["max_size"] * PARAMS["canny_upperthreshold_ratio"]),
+    )
+    if SHOW_PREVIEW:
+        preview_findlines = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     return (
         img,
-        np.vstack([preview_grayscale, preview_findlines, preview_end])
-        if SHOW_PREVIEW
-        else None,
+        np.vstack([preview_grayscale, preview_findlines]) if SHOW_PREVIEW else None,
     )
 
 
@@ -347,7 +345,9 @@ def draw_user_feedback(
     topleft: tuple[int],
     bottomright: tuple[int],
 ) -> np.ndarray:
-    found_topleft, found_topright, found_bottomleft, found_bottomright = found_corners
+    found_topleft, found_topright, found_bottomleft, found_bottomright = map(
+        lambda corner: corner.any(), found_corners
+    )
 
     # Draw the lines on the main preview image
     draw_line = lambda found_corner, x1, y1, x2, y2: cv2.line(
@@ -434,23 +434,101 @@ def main() -> None:
             update_params()
 
         # Process image and get the corners
-        img, masked_frame, mask_dims = mask_video(frame, camH, camW)
-        img, preview_processed = process_image(img)
-        preview_lines, preview_regions, corners = find_lines_and_corners(img, mask_dims)
-        corner_topleft, corner_topright, corner_bottomleft, corner_bottomright = corners
+        cropped_img, masked_frame, mask_dims = mask_video(frame, camH, camW)
+        img, preview_processed = process_image(cropped_img)
 
-        # Check if the corners are found
-        found_topleft = corner_topleft is not None and corner_topleft.any()
-        found_topright = corner_topright is not None and corner_topright.any()
-        found_bottomleft = corner_bottomleft is not None and corner_bottomleft.any()
-        found_bottomright = corner_bottomright is not None and corner_bottomright.any()
-        found_corners = [
-            found_topleft,
-            found_topright,
-            found_bottomleft,
-            found_bottomright,
-        ]
-        found_corners_num = sum(found_corners)
+        # Find the contours of the image
+        contours, hierarchy = cv2.findContours(
+            img,
+            cv2.RETR_TREE,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
+
+        # Find the biggest rectangle contour and get its corners
+        preview_all_corners = cropped_img.copy()
+        for contour in contours:
+            epsilon = 0.01 * cv2.arcLength(contour, True)
+            corners = cv2.approxPolyDP(contour, epsilon, True)
+            # Draw all corners on the preview image
+            for corner in corners:
+                x, y = corner.ravel()
+                cv2.circle(preview_all_corners, (x, y), 5, (255, 255, 0), -1)
+
+            if len(corners) == 4:
+                break
+
+        # Draw the biggest rectangle contour
+        preview_corners = cv2.drawContours(
+            cropped_img.copy(),
+            [corners],
+            -1,
+            GREEN,
+            3,
+        )
+
+        # Document warping
+        warped = np.zeros(cropped_img.shape, dtype=np.uint8)
+        rect = np.zeros((4, 2), dtype="float32")
+        if len(corners) == 4:
+            for corner in corners:
+                x, y = corner.ravel()
+                cv2.circle(preview_corners, (x, y), 5, RED, -1)
+
+            corners = corners.reshape(4, 2)
+            corner_sum = np.sum(corners, axis=1)
+            corner_topleft = corners[np.argmin(corner_sum)]
+            corner_bottomright = corners[np.argmax(corner_sum)]
+
+            corner_diff = np.diff(corners, axis=1)
+            corner_topright = corners[np.argmin(corner_diff)]
+            corner_bottomleft = corners[np.argmax(corner_diff)]
+
+            # Get the max width and height of the document
+            width_top = np.linalg.norm(corner_topright - corner_topleft)
+            width_bottom = np.linalg.norm(corner_bottomright - corner_bottomleft)
+            max_width = max(int(width_top), int(width_bottom))
+
+            height_left = np.linalg.norm(corner_bottomleft - corner_topleft)
+            height_right = np.linalg.norm(corner_bottomright - corner_topright)
+            max_height = max(int(height_left), int(height_right))
+
+            # Get the destination points
+            dst = np.array(
+                [
+                    [0, 0],
+                    [max_width - 1, 0],
+                    [0, max_height - 1],
+                    [max_width - 1, max_height - 1],
+                ],
+                dtype="float32",
+            )
+
+            # Get the perspective transform matrix
+            rect = np.array(
+                [
+                    corner_topleft,
+                    corner_topright,
+                    corner_bottomleft,
+                    corner_bottomright,
+                ],
+                dtype="float32",
+            )
+            transformation_matrix = cv2.getPerspectiveTransform(rect, dst)
+
+            # Warp the document
+            warped = cv2.warpPerspective(
+                cropped_img.copy(),
+                transformation_matrix,
+                (max_width, max_height),
+            )
+
+            # Resize the warped document to the mask ratio
+            warped = cv2.resize(
+                warped,
+                cropped_img.shape[:2][::-1],
+                interpolation=cv2.INTER_AREA,
+            )
 
         # Corner coordinates
         topleft = int(camW / 2 - mask_dims[0] / 2), int(camH / 2 - mask_dims[1] / 2)
@@ -462,13 +540,13 @@ def main() -> None:
         ]
 
         # Draw the user feedback
-        masked_frame = draw_user_feedback(
-            masked_frame, found_corners, topleft, bottomright
-        )
+        masked_frame = draw_user_feedback(masked_frame, rect, topleft, bottomright)
 
         # Show the previews with the edges highlighted
         if SHOW_PREVIEW:
-            preview = np.vstack([preview_processed, preview_lines, preview_regions])
+            preview = np.vstack(
+                [preview_processed, preview_all_corners, preview_corners, warped]
+            )
             preview = np.pad(
                 preview,
                 (
@@ -481,7 +559,7 @@ def main() -> None:
         cv2.imshow(app_name, masked_frame)
 
         # Save a screenshot if a card is detected for Y milliseconds
-        if found_corners_num >= 3:
+        if False and found_corners_num >= 3:
             valid_frames += 1
             if valid_frames >= PARAMS["wait_frames"]:
                 valid_frames = 0
@@ -497,7 +575,7 @@ def main() -> None:
         # Press "s" to save a screenshot, ESC or "q" to quit
         key = cv2.waitKey(1)
         if key == ord("s"):
-            cv2.imwrite(f"../cardscanner-custom/assets/card1.png", card)
+            cv2.imwrite(f"../cardscanner-custom/assets/card2.png", card)
         elif key == 27 or key == ord("q"):
             print(f"Shutting Down {app_name}...")
             cam.release()
