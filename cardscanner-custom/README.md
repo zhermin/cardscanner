@@ -1,61 +1,52 @@
 # CardScanner Custom C++ Version
-Custom C++ Version to perform edge/corner detection on cards to replace the OpenCV library due to extremely limited memory allotment on mobile devices. 
 
-# C++ Quirks
+Custom C++ Version to perform edge/corner detection on cards to replace the OpenCV library due to extremely limited memory allotment on mobile devices.
 
-## Binary Mode
+# Introduction
 
-Input: `ifstream var(filename, ios::binary)`
+This TD showcases the next version v0.2 of the card edge/corner detector. The main improvement over version v0.1 is the removal of all OpenCV dependencies and instead using an open-sourced custom implementation of the line detection algorithm in C++.
 
-Output: `ofstream var(filename, ios::binary)`
+The primary goal of removing the dependency on OpenCV is to reduce the eventual app size. As elaborated in the previous TD for v0.1, the OpenCV library takes up a huge amount of storage. Even the mobile bundle requires upwards of 10MB, which severely exceeds the current set limit of 3MB for the entire SDK, including the other models in the auto-scanning pipeline.
 
-From the default cpp library `<fstream>`, these two functions reads and writes a file in binary format (byte stream). In both cases, the parameters following the variable name are the filename and `ios::binary` to indicate binary mode. 
+However, the performance of the model might worsen in this version because some OpenCV functions previously used were harder to find custom implementations for, such as the Shi-Tomasi corner detection algorithm. Instead, tentatively, a simpler corner detection method is used in this version.
 
-## Double :: Variables
+## Model Development (Pure C++ Implementation)
 
-Example, `::sig = stoi(argv[3])`, the `::` operator is the "score-resolution" operator which resolves the scope of a variable. Most of the time, the double colon will be preceded with the name of a library, such as in `cv::Mat img`, we are resolving the variable to the OpenCV library. 
+![v0.2 Model Development](./assets/docs/v0.2%20Model%20Development.png)
 
-In the case of a naked double colon, it resolves to the global scope or top level scope of the project. This is essentially a global variable across all files and if a new variable with the same name is defined in a local scope, they will point to different variables under the hood. 
+1. Image masking, cropping and resizing will be done on the app's frontend
+2. After the Java preprocessing steps above, the edge detection model will receive a C++ `byteArray` or `unsigned char *` input which has already been grayscaled
+3. Use the custom C++ Canny edge detector and Hough Line transform algorithm
+    1. Further crop and scale down the frame for faster processing
+    2. The algo applies a **Gaussian blur** to reduce noise
+    3. The algo then applies a **Canny edge detector** to detect edges (full details of the Canny algorithm can be found in the v0.1 TD)
+    4. I believe the algo *does not* apply a **Dilation** to thicken the edges
+    5. The algo finally applies the hough line transform to find lines
+4. Check for lines
+    1. Section off the image into 4 areas: left, right, top and bottom
+    2. Keep only the lines at the 4 side regions
+5. Check for corners
+    1. Section off the image into the 4 corners: top left, top right, bottom left and bottom right
+    2. Instead of using a corner detection algorithm like Shi-Tomasi (used in v0.1 OpenCV version), a simple algorithm to check for corners is used
+    3. By checking if there are lines starting or ending at the 4 corner regions, we can get roughly the same performance as the Shi-Tomasi algorithm
+6. Draw the found lines and corners on a new image for debugging purposes
+7. Return the number of corners found; if 3 or 4 corners found, the auto-capture pipeline can move to the Card Type detection, else, it will restart from the beginning of the pipeline
 
-## Double ** Variables
+## Model Performance Evaluation
 
-From `main.cpp`, the variable `pic` from `double **pic = new double*[height]` is used to deference twice to point to the first memory space of an array. 
+No extensive testing was done on the model performance yet because the focus was on removing the OpenCV dependency. The model's performance will likely suffer because the OpenCV version might have been better written and more robust. However, this is naturally the cost of removing the OpenCV library.
 
-```cpp
-// The following are equivalent
-int main(int argc, char* argv[])
-int main(int argc, char** argv)
-```
+### Metrics
 
-## Operators `<<` and `>>`
+- Size: Total size of the model and if including imported libraries, if any
+- Speed: Time to process each frame
+- Accuracy: Auto-capturing when it is supposed to ("Predicted" Positives)
+- Stability: NOT auto-capturing when it is not supposed to ("Predicted" Negatives)
 
-These operators push a stream of bytes into an underlying buffer. In the most common case, with the help of the default cpp library `<iostream>`, we get access to both `cout` and `cin` to write and read outputs and inputs to allow things to be printed. 
-
-```cpp
-#include <iostream>
-int main() { cout << "Hello World" << endl; }
-```
-
-We can also push data to a bunch of variables in one line, such as the header information from a `.pgm` file, which contains 4 ASCII text in its header, allowing us to store that data directly to variables. 
-
-```cpp
-infile >> ::type >> ::width >> ::height >> ::intensity;
-```
-
-## Command Line Arguments
-
-To pass command line arguments, we typically define main() with two arguments: first argument is the number of command line arguments and second is list of command-line arguments.
-
-```cpp
-int main(int argc, char *argv[]) { /* ... */ }
-// or
-int main(int argc, char **argv) { /* ... */ }
-```
-
-- `argv(ARGument Vector)` is an array of character pointers listing all the arguments
-- If `argc` is greater than zero, the array elements from `argv[0]` to `argv[argc-1]` will contain pointers to **strings**
-- `argv[0]` is the name of the program while the rest are the command line arguments until `argv[argc-1]`
-
-## `stoi()` Function
-
-S-TO-I stands for String TO Integer conversion. This can be used to easily parse the character arrays `char *`, aka strings, from command line arguments to integers, such as in the case of `int lo = stoi(argv[3])`. 
+|      |                 |                     |       |          |           |
+| ---- | --------------- | ------------------- | ----- | -------- | --------- |
+|      | Pure Model Size | SDK Size with Model | Speed | Accuracy | Stability |
+| v0.1 |                 |                     |       |          |           |
+| v0.2 |                 |                     |       |          |           |
+| v0.3 |                 |                     |       |          |           |
+| v0.4 |                 |                     |       |          |           |

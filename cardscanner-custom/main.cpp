@@ -1,56 +1,51 @@
 #include "houghlines/houghlines.h"
-#include <cmath>
 #include <fstream>
-#include <iostream>
-
-using namespace std;
 
 char type[10];
-int height;
 int width;
+int height;
 int intensity;
 
 struct {
-  bool debug = true;         // set to true to print debug info
-  float resized_width = 300; // width of sized down image for faster processing
-  float canny_lowerthreshold_ratio =
-      0.2; // rejected if pixel gradient is below lower threshold (9)
-  float canny_upperthreshold_ratio =
-      0.6; // accepted if pixel gradient is above upper threshold (30)
-  float houghline_threshold_ratio =
-      0.1; // minimum intersections to detect a line (150)
-  float houghline_minlinelength_ratio = 0.1; // minimum length of a line (60)
-  float houghline_maxlinegap_ratio =
-      0.1; // maximum gap between two points to form a line (2)
+  float resized_width =
+      300; // new width of sized down image for faster processing
   float area_detection_ratio =
       0.10; // ratio of the detection area to the image area (30)
+  float canny_lowerthreshold_ratio =
+      0.2; // rejected if pixel gradient is below lower threshold (60)
+  float canny_upperthreshold_ratio =
+      0.6; // accepted if pixel gradient is above upper threshold (180)
+  float houghline_threshold_ratio =
+      0.1; // minimum intersections to detect a line (30)
+  float houghline_minlinelength_ratio =
+      0.1; // minimum length of a line to detect (30)
+  float houghline_maxlinegap_ratio =
+      0.1; // maximum gap between two potential lines to join into 1 line (3)
 } PARAMS;
 
 int main(int argc, char **argv) {
-  // read image
-  if (argc < 3) {
-    cout << "Usage: $ " << argv[0]
-         << " <input.pgm> <0/1 Standard/Probabilistic>" << endl;
-    return 1;
-  }
+  // USAGE
+  // $ ./main.o <pgm image (in ./assets folder)> <0/1 Standard/Probabilistic>
+  // EXAMPLE
+  // $ ./main.o card5 1; echo $?
+  // >> -1 (error) or 0-4 (number of found corners)
 
-  ifstream infile(argv[1], ios::binary);
-  if (!infile.is_open()) {
-    cout << "Error opening file" << endl;
-    return 1;
-  }
+  if (argc < 3)
+    return -1;
 
-  // read header
+  std::ifstream infile("assets/" + std::string(argv[1]) + ".pgm",
+                       std::ios::binary);
+  if (!infile.is_open())
+    return -1;
+
+  // read header (.pgm type and intensity header info are unused)
   infile >> type >> width >> height >> intensity;
-  unsigned char *image = new unsigned char[width * height];
-  infile.read((char *)image, width * height);
+  unsigned char *frameByteArray = new unsigned char[width * height];
+  infile.read((char *)frameByteArray, width * height);
   infile.close();
 
-  if (PARAMS.debug)
-    cout << "Image size: " << width << "x" << height << endl;
-
-  // detect lines
-  vector<line_float_t> lines;
+  // initialize lines vector and bounding box
+  std::vector<line_float_t> lines;
   boundingbox_t bbox;
   bbox.x = 0;
   bbox.y = 0;
@@ -60,22 +55,19 @@ int main(int argc, char **argv) {
   // calculate scale factor
   float scale = PARAMS.resized_width / (float)width;
 
-  if (PARAMS.debug)
-    cout << "Scale factor: " << scale << "x" << scale << endl;
-
   // use houghlines to detect lines
-  if (stoi(argv[2]) == 0) {
-    HoughLineDetector(image, width, height, scale, scale,
+  if (std::stoi(argv[2]) == 0) {
+    HoughLineDetector(frameByteArray, width, height, scale, scale,
                       PARAMS.canny_lowerthreshold_ratio * PARAMS.resized_width,
                       PARAMS.canny_upperthreshold_ratio * PARAMS.resized_width,
-                      1, M_PI / 180, 0, M_PI,
+                      1, PI / 180, 0, PI,
                       PARAMS.houghline_threshold_ratio * PARAMS.resized_width,
                       HOUGH_LINE_STANDARD, bbox, lines);
   } else {
     HoughLineDetector(
-        image, width, height, scale, scale,
+        frameByteArray, width, height, scale, scale,
         PARAMS.canny_lowerthreshold_ratio * PARAMS.resized_width,
-        PARAMS.canny_upperthreshold_ratio * PARAMS.resized_width, 1, M_PI / 180,
+        PARAMS.canny_upperthreshold_ratio * PARAMS.resized_width, 1, PI / 180,
         PARAMS.houghline_minlinelength_ratio * PARAMS.resized_width,
         PARAMS.houghline_maxlinegap_ratio * PARAMS.resized_width,
         PARAMS.houghline_threshold_ratio * PARAMS.resized_width,
@@ -83,10 +75,10 @@ int main(int argc, char **argv) {
   }
 
   // only keep the lines in the detection regions (top, bottom, left, right)
-  vector<line_float_t> lines_top;
-  vector<line_float_t> lines_bottom;
-  vector<line_float_t> lines_left;
-  vector<line_float_t> lines_right;
+  std::vector<line_float_t> lines_top;
+  std::vector<line_float_t> lines_bottom;
+  std::vector<line_float_t> lines_left;
+  std::vector<line_float_t> lines_right;
   for (int i = 0; i < lines.size(); i++) {
     line_float_t line = lines[i];
     if (line.startx == 1 && line.endx == 1)
@@ -107,29 +99,14 @@ int main(int argc, char **argv) {
   }
 
   // combine the region lines
-  vector<line_float_t> foundlines;
+  std::vector<line_float_t> foundlines;
   foundlines.insert(foundlines.end(), lines_top.begin(), lines_top.end());
   foundlines.insert(foundlines.end(), lines_bottom.begin(), lines_bottom.end());
   foundlines.insert(foundlines.end(), lines_left.begin(), lines_left.end());
   foundlines.insert(foundlines.end(), lines_right.begin(), lines_right.end());
 
-  // print lines
-  if (PARAMS.debug) {
-    cout << "Found " << lines.size() << " lines (All)" << endl;
-    cout << "Found " << foundlines.size() << " lines (Sides)" << endl;
-  }
-
-  // print all lines
-  if (PARAMS.debug) {
-    for (int i = 0; i < foundlines.size(); i++) {
-      cout << foundlines[i].startx << " " << foundlines[i].starty << " "
-           << foundlines[i].endx << " " << foundlines[i].endy << endl;
-    }
-  }
-
-  // check for corners
-  // top left corner: if there is a line with startx and starty within detection
-  // area ratio multiplied by the image width and height, and so on for the rest
+  // check in all 4 corners if there is a line with x and y coordinates
+  // within detection area ratio multiplied by the image width and height
   point_t corner_top_left, corner_top_right, corner_bottom_left,
       corner_bottom_right;
   bool found_top_left = false;
@@ -138,10 +115,10 @@ int main(int argc, char **argv) {
   bool found_bottom_right = false;
   for (int i = 0; i < foundlines.size(); i++) {
     line_float_t line = foundlines[i];
-    int minx = min(line.startx, line.endx);
-    int miny = min(line.starty, line.endy);
-    int maxx = max(line.startx, line.endx);
-    int maxy = max(line.starty, line.endy);
+    int minx = std::min(line.startx, line.endx);
+    int miny = std::min(line.starty, line.endy);
+    int maxx = std::max(line.startx, line.endx);
+    int maxy = std::max(line.starty, line.endy);
     if (minx < width * PARAMS.area_detection_ratio &&
         miny < height * PARAMS.area_detection_ratio) {
       corner_top_left.x = minx;
@@ -165,48 +142,10 @@ int main(int argc, char **argv) {
     }
   }
 
-  // print corners
-  if (PARAMS.debug) {
-    cout << "Found corners: " << endl;
-    string print_top_left = found_top_left
-                                ? "Top left: " + to_string(found_top_left) +
-                                      " (" + to_string(corner_top_left.x) +
-                                      ", " + to_string(corner_top_left.y) + ")"
-                                : "Top left: " + to_string(found_top_left);
-    string print_top_right =
-        found_top_right ? "Top right: " + to_string(found_top_right) + " (" +
-                              to_string(corner_top_right.x) + ", " +
-                              to_string(corner_top_right.y) + ")"
-                        : "Top right: " + to_string(found_top_right);
-    string print_bottom_left =
-        found_bottom_left ? "Bottom left: " + to_string(found_bottom_left) +
-                                " (" + to_string(corner_bottom_left.x) + ", " +
-                                to_string(corner_bottom_left.y) + ")"
-                          : "Bottom left: " + to_string(found_bottom_left);
-    string print_bottom_right =
-        found_bottom_right ? "Bottom right: " + to_string(found_bottom_right) +
-                                 " (" + to_string(corner_bottom_right.x) +
-                                 ", " + to_string(corner_bottom_right.y) + ")"
-                           : "Bottom right: " + to_string(found_bottom_right);
-    cout << print_top_left << endl;
-    cout << print_top_right << endl;
-    cout << print_bottom_left << endl;
-    cout << print_bottom_right << endl;
-
-    // if 3 or more corners are found, a card is detected
-    int found_corners = int(found_top_left) + int(found_top_right) +
-                        int(found_bottom_left) + int(found_bottom_right);
-    if (found_corners >= 3) {
-      cout << "Card detected!" << endl;
-    } else {
-      cout << "Card NOT detected!" << endl;
-    }
-  }
-
   // draw the found lines on a blank image
-  unsigned char *image_out = new unsigned char[width * height];
+  unsigned char *frameByteArrayOut = new unsigned char[width * height];
   for (int i = 0; i < width * height; i++) {
-    image_out[i] = 0;
+    frameByteArrayOut[i] = 0;
   }
   for (int i = 0; i < foundlines.size(); i++) {
     int x1 = foundlines[i].startx;
@@ -219,7 +158,7 @@ int main(int argc, char **argv) {
     int sy = y1 < y2 ? 1 : -1;
     int err = dx - dy;
     while (true) {
-      image_out[y1 * width + x1] = 255;
+      frameByteArrayOut[y1 * width + x1] = 255;
       if (x1 == x2 && y1 == y2) {
         break;
       }
@@ -235,32 +174,48 @@ int main(int argc, char **argv) {
     }
   }
 
-  // write image to a new pgm file with the same header as the input file
-  string outfilename;
-
-  // remove the extension from the input filename
-  size_t lastindex = string(argv[1]).find_last_of(".");
-  string filename = string(argv[1]).substr(0, lastindex);
-
-  if (stoi(argv[2]) == 0) {
-    outfilename = filename + "_out" + string(argv[2]) + ".pgm";
-  } else {
-    outfilename = filename + "_out" + string(argv[2]) + ".pgm";
+  // draw the found corners on the image
+  for (int i = 0; i < 7; i++) {
+    for (int j = 0; j < 7; j++) {
+      if (found_top_left) {
+        frameByteArrayOut[(corner_top_left.y - 2 + i) * width +
+                          (corner_top_left.x - 2 + j)] = 255;
+      }
+      if (found_top_right) {
+        frameByteArrayOut[(corner_top_right.y - 2 + i) * width +
+                          (corner_top_right.x - 2 + j)] = 255;
+      }
+      if (found_bottom_left) {
+        frameByteArrayOut[(corner_bottom_left.y - 2 + i) * width +
+                          (corner_bottom_left.x - 2 + j)] = 255;
+      }
+      if (found_bottom_right) {
+        frameByteArrayOut[(corner_bottom_right.y - 2 + i) * width +
+                          (corner_bottom_right.x - 2 + j)] = 255;
+      }
+    }
   }
 
-  if (PARAMS.debug)
-    cout << "Writing output to " << outfilename << endl;
+  // write image to a new pgm file with the same header as the input file
+  std::ofstream outfile("assets/outputs/" + std::string(argv[1]) + "_out" +
+                            std::string(argv[2]) + ".pgm",
+                        std::ios::binary);
 
-  ofstream outfile(outfilename, ios::binary);
-  outfile << type << endl
-          << width << " " << height << endl
-          << intensity << endl;
-  outfile.write((char *)image_out, width * height);
+  outfile << type << std::endl
+          << width << " " << height << std::endl
+          << intensity << std::endl;
+  outfile.write((char *)frameByteArrayOut, width * height);
   outfile.close();
 
   // free memory
-  delete[] image;
-  delete[] image_out;
+  delete[] frameByteArray;
+  delete[] frameByteArrayOut;
 
-  return 0;
+  // if 3 or more corners are found, a card is detected
+  int found_corners = int(found_top_left) + int(found_top_right) +
+                      int(found_bottom_left) + int(found_bottom_right);
+
+  // return the number of found corners
+  // note: the coordinates of the corners are in corner_*** .x and .y members
+  return found_corners;
 }

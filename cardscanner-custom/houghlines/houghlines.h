@@ -2,10 +2,15 @@
 #ifndef __HOUGH_LINE_H_
 #define __HOUGH_LINE_H_
 
+#include <math.h>
 #include <vector>
 
+#ifndef PI
+#define PI (3.1415926535897932384626433832795)
+#endif
+
 typedef enum _HOUGH_LINE_TYPE_CODE {
-  HOUGH_LINE_STANDARD = 0,      // standad hough line
+  HOUGH_LINE_STANDARD = 0,      // standard hough line
   HOUGH_LINE_PROBABILISTIC = 1, // probabilistic hough line
 
 } HOUGH_LINE_TYPE_CODE;
@@ -30,48 +35,40 @@ typedef struct {
 } point_t;
 
 /*
-@function    HoughLineDetector
-@param       [in]      src: image,single channel
-@param       [in]      w:                         width of image
-@param       [in]      h:                         height of image
-@param       [in]      scaleX:                    downscale factor in X-axis
-@param       [in]      scaleY:                    downscale factor in Y-axis
-@param       [in]      CannyLowThresh:            lower threshold for the
-hysteresis procedure in canny operator
-@param       [in]      CannyHighThresh:           higher threshold for the
-hysteresis procedure in canny operator
-@param       [in]      HoughRho:                  distance resolution of the
-accumulator in pixels
-@param       [in]      HoughTheta:                angle resolution of the
-accumulator in radians
-@param       [in]      MinThetaLinelength:        standard: for standard and
-multi-scale hough transform, minimum angle to check for lines. probabilistic:
-minimum line length. Line segments shorter than that are rejected
-@param       [in]      MaxThetaGap:               standard: for standard and
-multi-scale hough transform, maximum angle to check for lines probabilistic:
-maximum allowed gap between points on the same line to link them
-@param       [in]      HoughThresh:               accumulator threshold
-parameter. only those lines are returned that get enough votes ( >threshold ).
-@param       [in]      _type:                     hough line method:
-HOUGH_LINE_STANDARD or HOUGH_LINE_PROBABILISTIC
-@param       [in]      bbox:                      boundingbox to detect
-@param       [in/out]  lines:                     result
-@return：
-0:ok; 1:error
-@brief：     _type: HOUGH_LINE_STANDARD:		  standard hough line
-algorithm HOUGH_LINE_PROBABILISTIC	  probabilistic hough line algorithm
+@function HoughLineDetector
+@brief Custom C++ implementation of the Hough Line detection algorithm.
+For HOUGH_LINE_STANDARD, the line points might fall outside of the image.
+STANDARD EXAMPLE:
+`HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 0, PI, 100,
+                  HOUGH_LINE_STANDARD, bbox, lines)`
+PROBABILISTIC EXAMPLE:
+`HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 30, 10, 80,
+                  HOUGH_LINE_PROBABILISTIC, bbox, lines)`
 
-For HOUGH_LINE_STANDARD, the line points might fall outside the image coordinate
-
-Standard: Try
-HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 0, PI, 100,
-                  HOUGH_LINE_STANDARD, bbox, lines)
-
-Probabilistic: Try
-HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 30, 10, 80,
-                  HOUGH_LINE_PROBABILISTIC, bbox, lines)
+@param [in] src: image, single channel
+@param [in] w: width of image
+@param [in] h: height of image
+@param [in] scaleX: downscale factor in X-axis
+@param [in] scaleY: downscale factor in Y-axis
+@param [in] CannyLowThresh: lower threshold for hysteresis procedure in canny
+@param [in] CannyHighThresh: higher threshold for hysteresis procedure in canny
+@param [in] HoughRho: distance resolution of the accumulator in pixels
+@param [in] HoughTheta: angle resolution of the accumulator in radians
+@param [in] MinThetaLinelength:
+STANDARD: for standard and multi-scale hough transform, minimum angle to check
+for lines. PROBABILISTIC: minimum line length, line segments shorter than that
+are rejected.
+@param [in] MaxThetaGap:
+STANDARD: for standard and multi-scale hough transform, maximum angle to check
+for lines. PROBABILISTIC: maximum allowed gap between points on the same line to
+link them.
+@param [in] HoughThresh: accumulator threshold parameter, only lines that get
+enough votes are returned ( >threshold )
+@param [in] _type: HOUGH_LINE_STANDARD or HOUGH_LINE_PROBABILISTIC
+@param [in] bbox: boundingbox or region to detect the lines in
+@param [in/out] lines: detected lines are returned in this vector
+@result [int] 0: success; 1: error
 */
-
 int HoughLineDetector(unsigned char *src, int w, int h, float scaleX,
                       float scaleY, float CannyLowThresh, float CannyHighThresh,
                       float HoughRho, float HoughTheta,

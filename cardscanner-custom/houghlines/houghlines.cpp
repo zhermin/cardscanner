@@ -1,11 +1,5 @@
 #include "houghlines.h"
 
-#include <algorithm>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #ifndef ROUND
 #define ROUND (0.5F)
 #endif
@@ -16,10 +10,6 @@
 
 #ifndef MAX
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
-#endif
-
-#ifndef PI
-#define PI (3.1415926535897932384626433832795)
 #endif
 
 #ifndef INT_MAX
@@ -369,7 +359,6 @@ static short *sobel_edge(unsigned char *src, int w, int h,
     break;
 
   default:
-    // printf("sobel oriention is wrong!");
     break;
   }
 
@@ -959,49 +948,7 @@ static void _hough_line_detector(unsigned char *src, int w, int h, float scaleX,
   delete[] _src;
 }
 
-/*
-@function    HoughLineDetector
-@param       [in]      src: image,single channel
-@param       [in]      w:                         width of image
-@param       [in]      h:                         height of image
-@param       [in]      scaleX:                    downscale factor in X-axis
-@param       [in]      scaleY:                    downscale factor in Y-axis
-@param       [in]      CannyLowThresh:            lower threshold for the
-hysteresis procedure in canny operator
-@param       [in]      CannyHighThresh:           higher threshold for the
-hysteresis procedure in canny operator
-@param       [in]      HoughRho:                  distance resolution of the
-accumulator in pixels
-@param       [in]      HoughTheta:                angle resolution of the
-accumulator in radians
-@param       [in]      MinThetaLinelength:        standard: for standard and
-multi-scale hough transform, minimum angle to check for lines. probabilistic:
-minimum line length. Line segments shorter than that are rejected
-@param       [in]      MaxThetaGap:               standard: for standard and
-multi-scale hough transform, maximum angle to check for lines probabilistic:
-maximum allowed gap between points on the same line to link them
-@param       [in]      HoughThresh:               accumulator threshold
-parameter. only those lines are returned that get enough votes ( >threshold ).
-@param       [in]      _type:                     hough line method:
-HOUGH_LINE_STANDARD or HOUGH_LINE_PROBABILISTIC
-@param       [in]      bbox:                      boundingbox to detect
-@param       [in/out]  lines:                     result
-@return：
-0:ok; 1:error
-@brief：     _type: HOUGH_LINE_STANDARD:		  standard hough line
-algorithm HOUGH_LINE_PROBABILISTIC	  probabilistic hough line algorithm
-
-For HOUGH_LINE_STANDARD, the line points might fall outside the image coordinate
-
-Standard: Try
-HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 0, PI, 100,
-                  HOUGH_LINE_STANDARD, bbox, lines)
-
-Probabilistic: Try
-HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 30, 10, 80,
-                  HOUGH_LINE_PROBABILISTIC, bbox, lines)
-*/
-
+// Main Hough Line Detector Function
 int HoughLineDetector(unsigned char *src, int w, int h, float scaleX,
                       float scaleY, float CannyLowThresh, float CannyHighThresh,
                       float HoughRho, float HoughTheta,
