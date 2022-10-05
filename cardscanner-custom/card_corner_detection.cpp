@@ -1,5 +1,4 @@
 #include "houghlines/houghlines.h"
-#include <fstream>
 
 using namespace std;
 

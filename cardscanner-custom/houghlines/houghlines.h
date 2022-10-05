@@ -39,10 +39,10 @@ typedef struct {
 @brief Custom C++ implementation of the Hough Line detection algorithm.
 For HOUGH_LINE_STANDARD, the line points might fall outside of the image.
 STANDARD EXAMPLE:
-`HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 0, PI, 100,
+`HoughLineDetector(src, w, h, scaleX, scaleY, 70, 150, 1, PI / 180, 0, PI, 100,
                   HOUGH_LINE_STANDARD, bbox, lines)`
 PROBABILISTIC EXAMPLE:
-`HoughLineDetector(src, w, h, scalex, scaley, 70, 150, 1, PI / 180, 30, 10, 80,
+`HoughLineDetector(src, w, h, scaleX, scaleY, 70, 150, 1, PI / 180, 30, 10, 80,
                   HOUGH_LINE_PROBABILISTIC, bbox, lines)`
 
 @param [in] src: image, single channel
