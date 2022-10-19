@@ -32,6 +32,7 @@ typedef struct {
 typedef struct {
   int x;
   int y;
+  float score;
 } point_t;
 
 /*

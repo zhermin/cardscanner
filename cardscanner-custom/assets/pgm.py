@@ -1,5 +1,6 @@
 import cv2
 import sys, os
+import numpy as np
 
 
 def main():
@@ -27,7 +28,7 @@ def main():
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Check if filename already exists and append number if so
-    i = 1
+    i = 0
     while True:
         new_filename = f"{filename[:-5]}{i}.pgm"
         if not os.path.isfile(new_filename):

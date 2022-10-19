@@ -907,7 +907,7 @@ static void _hough_line_detector(unsigned char *src, int w, int h, float scaleX,
                                  std::vector<line_float_t> &lines) {
 
   unsigned char *edge = NULL;
-  float sigma = 0.6f;
+  float sigma = 1.0f;
   pixel_float_t scale = {scaleX, scaleY};
   image_int8u_p _src = new_image_int8u_ptr(w, h, src);
   image_int8u_p sub_src = gaussian_sampler_byte_bbox(_src, bbox, scale, sigma);
