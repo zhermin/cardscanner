@@ -156,17 +156,28 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   float frameToGuideDist = distance(point_t{0, 0}, guideFinderTopLeft);
   float detectionToGuideDist = distance(detectionTopLeft, guideFinderTopLeft);
 
-  // save the furthest x and y coordinates from the four corners and
+  // save the x and y coordinates nearest to the guide finder corners
   // calculate score for how far away the corners are from the guide finder
   point_t cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight;
+  float minCornerDistX, minCornerDistY, cornerDistX, cornerDistY;
   int cornerCount = 0;
 
   if (cornersTopLeft.size() > 0) {
     cornerCount++;
     cornerTopLeft = cornersTopLeft[0];
+    minCornerDistX = abs(cornerTopLeft.x - guideFinderTopLeft.x);
+    minCornerDistY = abs(cornerTopLeft.y - guideFinderTopLeft.y);
     for (int i = 0; i < cornersTopLeft.size(); i++) {
-      cornerTopLeft.x = min(cornerTopLeft.x, cornersTopLeft[i].x);
-      cornerTopLeft.y = min(cornerTopLeft.y, cornersTopLeft[i].y);
+      cornerDistX = abs(cornersTopLeft[i].x - guideFinderTopLeft.x);
+      cornerDistY = abs(cornersTopLeft[i].y - guideFinderTopLeft.y);
+      if (cornerDistX < minCornerDistX) {
+        minCornerDistX = cornerDistX;
+        cornerTopLeft.x = cornersTopLeft[i].x;
+      }
+      if (cornerDistY < minCornerDistY) {
+        minCornerDistY = cornerDistY;
+        cornerTopLeft.y = cornersTopLeft[i].y;
+      }
     }
     if (cornerTopLeft.x < guideFinderTopLeft.x &&
         cornerTopLeft.y < guideFinderTopLeft.y) {
@@ -183,9 +194,19 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   if (cornersTopRight.size() > 0) {
     cornerCount++;
     cornerTopRight = cornersTopRight[0];
+    minCornerDistX = abs(cornerTopRight.x - guideFinderTopRight.x);
+    minCornerDistY = abs(cornerTopRight.y - guideFinderTopRight.y);
     for (int i = 0; i < cornersTopRight.size(); i++) {
-      cornerTopRight.x = max(cornerTopRight.x, cornersTopRight[i].x);
-      cornerTopRight.y = min(cornerTopRight.y, cornersTopRight[i].y);
+      cornerDistX = abs(cornersTopRight[i].x - guideFinderTopRight.x);
+      cornerDistY = abs(cornersTopRight[i].y - guideFinderTopRight.y);
+      if (cornerDistX < minCornerDistX) {
+        minCornerDistX = cornerDistX;
+        cornerTopRight.x = cornersTopRight[i].x;
+      }
+      if (cornerDistY < minCornerDistY) {
+        minCornerDistY = cornerDistY;
+        cornerTopRight.y = cornersTopRight[i].y;
+      }
     }
     if (cornerTopRight.x > guideFinderTopRight.x &&
         cornerTopRight.y < guideFinderTopRight.y) {
@@ -202,9 +223,19 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   if (cornersBottomLeft.size() > 0) {
     cornerCount++;
     cornerBottomLeft = cornersBottomLeft[0];
+    minCornerDistX = abs(cornerBottomLeft.x - guideFinderBottomLeft.x);
+    minCornerDistY = abs(cornerBottomLeft.y - guideFinderBottomLeft.y);
     for (int i = 0; i < cornersBottomLeft.size(); i++) {
-      cornerBottomLeft.x = min(cornerBottomLeft.x, cornersBottomLeft[i].x);
-      cornerBottomLeft.y = max(cornerBottomLeft.y, cornersBottomLeft[i].y);
+      cornerDistX = abs(cornersBottomLeft[i].x - guideFinderBottomLeft.x);
+      cornerDistY = abs(cornersBottomLeft[i].y - guideFinderBottomLeft.y);
+      if (cornerDistX < minCornerDistX) {
+        minCornerDistX = cornerDistX;
+        cornerBottomLeft.x = cornersBottomLeft[i].x;
+      }
+      if (cornerDistY < minCornerDistY) {
+        minCornerDistY = cornerDistY;
+        cornerBottomLeft.y = cornersBottomLeft[i].y;
+      }
     }
     if (cornerBottomLeft.x < guideFinderBottomLeft.x &&
         cornerBottomLeft.y > guideFinderBottomLeft.y) {
@@ -223,9 +254,19 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   if (cornersBottomRight.size() > 0) {
     cornerCount++;
     cornerBottomRight = cornersBottomRight[0];
+    minCornerDistX = abs(cornerBottomRight.x - guideFinderBottomRight.x);
+    minCornerDistY = abs(cornerBottomRight.y - guideFinderBottomRight.y);
     for (int i = 0; i < cornersBottomRight.size(); i++) {
-      cornerBottomRight.x = max(cornerBottomRight.x, cornersBottomRight[i].x);
-      cornerBottomRight.y = max(cornerBottomRight.y, cornersBottomRight[i].y);
+      cornerDistX = abs(cornersBottomRight[i].x - guideFinderBottomRight.x);
+      cornerDistY = abs(cornersBottomRight[i].y - guideFinderBottomRight.y);
+      if (cornerDistX < minCornerDistX) {
+        minCornerDistX = cornerDistX;
+        cornerBottomRight.x = cornersBottomRight[i].x;
+      }
+      if (cornerDistY < minCornerDistY) {
+        minCornerDistY = cornerDistY;
+        cornerBottomRight.y = cornersBottomRight[i].y;
+      }
     }
     if (cornerBottomRight.x > guideFinderBottomRight.x &&
         cornerBottomRight.y > guideFinderBottomRight.y) {
@@ -241,24 +282,25 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     cornerBottomRight = {-1, -1, 0};
   }
 
-  // append the corner count and corner coordinates to an output int vector
-  // vector<int> foundCorners;
+  /* // append the corner count and corner coordinates to an output int vector
+  vector<int> foundCorners;
 
-  // foundCorners.push_back(cornerCount);
-  // foundCorners.push_back(cornerTopLeft.x);
-  // foundCorners.push_back(cornerTopLeft.y);
-  // foundCorners.push_back(cornerTopRight.x);
-  // foundCorners.push_back(cornerTopRight.y);
-  // foundCorners.push_back(cornerBottomLeft.x);
-  // foundCorners.push_back(cornerBottomLeft.y);
-  // foundCorners.push_back(cornerBottomRight.x);
-  // foundCorners.push_back(cornerBottomRight.y);
+  foundCorners.push_back(cornerCount);
+  foundCorners.push_back(cornerTopLeft.x);
+  foundCorners.push_back(cornerTopLeft.y);
+  foundCorners.push_back(cornerTopRight.x);
+  foundCorners.push_back(cornerTopRight.y);
+  foundCorners.push_back(cornerBottomLeft.x);
+  foundCorners.push_back(cornerBottomLeft.y);
+  foundCorners.push_back(cornerBottomRight.x);
+  foundCorners.push_back(cornerBottomRight.y);
 
-  // calculate the average score of the corners
-  // float cornerScore = (cornerTopLeft.score + cornerTopRight.score +
-  //                      cornerBottomLeft.score + cornerBottomRight.score) /
-  //                     4;
+  calculate the average score of the corners
+  float cornerScore = (cornerTopLeft.score + cornerTopRight.score +
+                       cornerBottomLeft.score + cornerBottomRight.score) /
+                      4; */
 
+  //// --- START OF DRAWINGS --- ////
   // draw the found lines on a blank image
   unsigned char *frameByteArrayOut =
       new unsigned char[frameWidth * frameHeight];
@@ -385,6 +427,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   // convert the unsigned char array to an opencv mat for display
   cv::Mat frameMat(frameHeight, frameWidth, CV_8UC1, frameByteArrayOut);
   imshow("corners", frameMat);
+  //// --- END OF DRAWINGS --- ////
 
   // return the vector of found corners
   delete grayscaled;
