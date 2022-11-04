@@ -68,3 +68,22 @@ int main(int argc, char **argv) { /* ... */ }
 ## `stoi()` Function
 
 S-TO-I stands for String TO Integer conversion. This can be used to easily parse the character arrays `char *`, aka strings, from command line arguments to integers, such as in the case of `int lo = stoi(argv[3])`.
+
+## OpenCV Shenanigans
+
+Cropping an image in OpenCV is done by using the `cv::Rect` class. The constructor takes in 4 parameters: `x`, `y`, `width`, `height`. The `x` and `y` parameters are the top-left corner of the rectangle. This rect object can then be used to crop an image using the `cv::Mat::operator()`.
+
+However, this only creates a view or a reference to the original image. The resultant Mat object will not be continuous in memory (check using `cv::Mat::isContinuous()`). This causes the `cv::Mat::data` to have incorrect values from the data of the actual cropped region. To fix this, we must copy the cropped region into a new Mat object using `cv::Mat::copyTo()`.
+
+```cpp
+cv::Mat cropped;
+img(cv::Rect(x, y, width, height)).copyTo(cropped);
+```
+
+# Android Development
+
+Build APK, to be found in `/app/build/outputs/apk/debug/app-debug.apk`
+
+```bash
+gradlew assembleDebug
+```

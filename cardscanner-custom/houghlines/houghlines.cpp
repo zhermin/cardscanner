@@ -899,7 +899,8 @@ static void hough_line_probabilistic(unsigned char *image, int w, int h,
 // interface
 
 static void _hough_line_detector(unsigned char *src, int w, int h, float scaleX,
-                                 float scaleY, float canny_low_thresh,
+                                 float scaleY, float sigma,
+                                 float canny_low_thresh,
                                  float canny_high_thresh, float hough_rho,
                                  float hough_theta, float min_theta_linelength,
                                  float max_theta_gap, int hough_thresh,
@@ -907,7 +908,6 @@ static void _hough_line_detector(unsigned char *src, int w, int h, float scaleX,
                                  std::vector<line_float_t> &lines) {
 
   unsigned char *edge = NULL;
-  float sigma = 1.0f;
   pixel_float_t scale = {scaleX, scaleY};
   image_int8u_p _src = new_image_int8u_ptr(w, h, src);
   image_int8u_p sub_src = gaussian_sampler_byte_bbox(_src, bbox, scale, sigma);
@@ -950,8 +950,8 @@ static void _hough_line_detector(unsigned char *src, int w, int h, float scaleX,
 
 // Main Hough Line Detector Function
 int HoughLineDetector(unsigned char *src, int w, int h, float scaleX,
-                      float scaleY, float CannyLowThresh, float CannyHighThresh,
-                      float HoughRho, float HoughTheta,
+                      float scaleY, float sigma, float CannyLowThresh,
+                      float CannyHighThresh, float HoughRho, float HoughTheta,
                       float MinThetaLinelength, float MaxThetaGap,
                       int HoughThresh, HOUGH_LINE_TYPE_CODE _type,
                       boundingbox_t bbox, std::vector<line_float_t> &lines) {
@@ -966,7 +966,7 @@ int HoughLineDetector(unsigned char *src, int w, int h, float scaleX,
       bbox.y + bbox.height > h)
     return 1;
 
-  _hough_line_detector(src, w, h, scaleX, scaleY, CannyLowThresh,
+  _hough_line_detector(src, w, h, scaleX, scaleY, sigma, CannyLowThresh,
                        CannyHighThresh, HoughRho, HoughTheta,
                        MinThetaLinelength, MaxThetaGap, HoughThresh, _type,
                        bbox, lines);

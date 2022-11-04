@@ -4,7 +4,7 @@
 #include <fstream>
 #include <iostream>
 
-bool DEBUG = 1;
+bool DEBUG = 0;
 int experiments = 1;
 
 char type[10];
@@ -18,14 +18,15 @@ int guideFinderHeight = 277;
 
 struct {
   float resizedWidth =
-      480; // new width of sized down image for faster processing
+      300; // new width of sized down image for faster processing
   float detectionAreaRatio =
-      0.15; // ratio of the detection area to the image area (30)
+      0.10;          // ratio of the detection area to the image area (30)
+  float sigma = 1.0; // sigma for gaussian blur
   int cannyLowerThreshold =
-      60; // rejected if pixel gradient is below lower threshold
+      10; // rejected if pixel gradient is below lower threshold
   int cannyUpperThreshold =
-      180; // accepted if pixel gradient is above upper threshold
-  int houghlineThreshold = 30; // minimum intersections to detect a line
+      30; // accepted if pixel gradient is above upper threshold
+  int houghlineThreshold = 60; // minimum intersections to detect a line
   float houghlineMinLineLengthRatio =
       0.1; // minimum length of a line to detect (30)
   float houghlineMaxLineGapRatio =
@@ -47,7 +48,7 @@ float distance(point_t p1, point_t p2) {
 }
 
 std::vector<point_t> getCorners(std::vector<float> &runtimes,
-                                unsigned char *frameByteArray, int frameWidth,
+                                unsigned char *grayscaled, int frameWidth,
                                 int frameHeight, std::string filename,
                                 int mode) {
 
@@ -74,13 +75,13 @@ std::vector<point_t> getCorners(std::vector<float> &runtimes,
 
   // use houghlines to detect lines
   if (mode == 0) {
-    HoughLineDetector(frameByteArray, frameWidth, frameHeight, scale, scale,
-                      PARAMS.cannyLowerThreshold, PARAMS.cannyUpperThreshold, 1,
-                      PI / 180, 0, PI, PARAMS.houghlineThreshold,
-                      HOUGH_LINE_STANDARD, bbox, lines);
+    HoughLineDetector(
+        grayscaled, frameWidth, frameHeight, scale, scale, PARAMS.sigma,
+        PARAMS.cannyLowerThreshold, PARAMS.cannyUpperThreshold, 1, PI / 180, 0,
+        PI, PARAMS.houghlineThreshold, HOUGH_LINE_STANDARD, bbox, lines);
   } else {
     HoughLineDetector(
-        frameByteArray, frameWidth, frameHeight, scale, scale,
+        grayscaled, frameWidth, frameHeight, scale, scale, PARAMS.sigma,
         PARAMS.cannyLowerThreshold, PARAMS.cannyUpperThreshold, 1, PI / 180,
         PARAMS.houghlineMinLineLengthRatio * PARAMS.resizedWidth,
         PARAMS.houghlineMaxLineGapRatio * PARAMS.resizedWidth,
@@ -94,13 +95,6 @@ std::vector<point_t> getCorners(std::vector<float> &runtimes,
   std::vector<line_float_t> linesRight;
   for (int i = 0; i < lines.size(); i++) {
     line_float_t line = lines[i];
-    // if lines both x or y are 1 pixel away from edges, reject as may be noise
-    if (line.startx == 1 && line.endx == 1 ||
-        line.starty == 1 && line.endy == 1 ||
-        line.startx == frameWidth - 1 && line.endx == frameWidth - 1 ||
-        line.starty == frameHeight - 1 && line.endy == frameHeight - 1)
-      continue;
-
     if (line.startx < frameWidth * PARAMS.detectionAreaRatio &&
         line.endx < frameWidth * PARAMS.detectionAreaRatio) {
       linesLeft.push_back(line);
@@ -170,28 +164,42 @@ std::vector<point_t> getCorners(std::vector<float> &runtimes,
   // outside of detection area ratio multiplied by the image width and height
   std::vector<point_t> cornersTopLeft, cornersTopRight, cornersBottomLeft,
       cornersBottomRight;
-  for (int i = 0; i < foundLines.size(); i++) {
-    line_float_t line = foundLines[i];
-    int minx = std::min(line.startx, line.endx);
-    int miny = std::min(line.starty, line.endy);
-    int maxx = std::max(line.startx, line.endx);
-    int maxy = std::max(line.starty, line.endy);
-    if (minx <= frameWidth * PARAMS.detectionAreaRatio &&
-        miny <= frameHeight * PARAMS.detectionAreaRatio) {
-      cornersTopLeft.push_back(point_t{minx, miny});
-    }
-    if (maxx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
-        miny <= frameHeight * PARAMS.detectionAreaRatio) {
-      cornersTopRight.push_back(point_t{maxx, miny});
-    }
-    if (minx <= frameWidth * PARAMS.detectionAreaRatio &&
-        maxy >= frameHeight * (1 - PARAMS.detectionAreaRatio)) {
-      cornersBottomLeft.push_back(point_t{minx, maxy});
-    }
-    if (maxx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
-        maxy >= frameHeight * (1 - PARAMS.detectionAreaRatio)) {
-      cornersBottomRight.push_back(point_t{maxx, maxy});
-    }
+
+  for (int i = 0; i < linesTop.size(); i++) {
+    line_float_t line = linesTop[i];
+    if (line.startx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.starty <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopLeft.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.endy <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopRight.push_back(point_t{(int)line.endx, (int)line.endy});
+  }
+  for (int i = 0; i < linesBottom.size(); i++) {
+    line_float_t line = linesBottom[i];
+    if (line.startx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.starty >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomLeft.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.endy >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomRight.push_back(point_t{(int)line.endx, (int)line.endy});
+  }
+  for (int i = 0; i < linesLeft.size(); i++) {
+    line_float_t line = linesLeft[i];
+    if (line.startx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.starty <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopLeft.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.endy >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomLeft.push_back(point_t{(int)line.endx, (int)line.endy});
+  }
+  for (int i = 0; i < linesRight.size(); i++) {
+    line_float_t line = linesRight[i];
+    if (line.startx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.starty <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopRight.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.endy >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomRight.push_back(point_t{(int)line.endx, (int)line.endy});
   }
 
   // print corners
@@ -231,11 +239,11 @@ std::vector<point_t> getCorners(std::vector<float> &runtimes,
   for (int i = 0; i < frameWidth * frameHeight; i++) {
     frameByteArrayOut[i] = 0;
   }
-  for (int i = 0; i < foundLines.size(); i++) {
-    int x1 = foundLines[i].startx;
-    int y1 = foundLines[i].starty;
-    int x2 = foundLines[i].endx;
-    int y2 = foundLines[i].endy;
+  for (int i = 0; i < lines.size(); i++) {
+    int x1 = lines[i].startx;
+    int y1 = lines[i].starty;
+    int x2 = lines[i].endx;
+    int y2 = lines[i].endy;
     int dx = abs(x2 - x1);
     int dy = abs(y2 - y1);
     int sx = x1 < x2 ? 1 : -1;

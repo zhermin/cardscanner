@@ -51,11 +51,12 @@ PROBABILISTIC EXAMPLE:
 @param [in] h: height of image
 @param [in] scaleX: downscale factor in X-axis
 @param [in] scaleY: downscale factor in Y-axis
+@param [in] sigma: Gaussian blur sigma value
 @param [in] CannyLowThresh: lower threshold for hysteresis procedure in canny
 @param [in] CannyHighThresh: higher threshold for hysteresis procedure in canny
 @param [in] HoughRho: distance resolution of the accumulator in pixels
 @param [in] HoughTheta: angle resolution of the accumulator in radians
-@param [in] MinThetaLinelength:
+@param [in] MinThetaLineLength:
 STANDARD: for standard and multi-scale hough transform, minimum angle to check
 for lines. PROBABILISTIC: minimum line length, line segments shorter than that
 are rejected.
@@ -71,8 +72,8 @@ enough votes are returned ( >threshold )
 @result [int] 0: success; 1: error
 */
 int HoughLineDetector(unsigned char *src, int w, int h, float scaleX,
-                      float scaleY, float CannyLowThresh, float CannyHighThresh,
-                      float HoughRho, float HoughTheta,
+                      float scaleY, float sigma, float CannyLowThresh,
+                      float CannyHighThresh, float HoughRho, float HoughTheta,
                       float MinThetaLinelength, float MaxThetaGap,
                       int HoughThresh, HOUGH_LINE_TYPE_CODE _type,
                       boundingbox_t bbox, std::vector<line_float_t> &lines);

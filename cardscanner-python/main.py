@@ -9,21 +9,16 @@ from argparse import ArgumentParser
 # Custom Libraries
 from src.Camera import Camera
 
-# Note: Ratio params are based off of the max_size param, actual values are in round brackets in the comments
+# Note: Ratio params are based off of the resizedWidth param, actual values are in round brackets in the comments
 PARAMS = {
-    "max_size": 300,  # width of scaled down image for faster processing
-    "frame_scaling_factor": 0.6,  # ratio of unmasked area to the entire frame (180)
-    "mask_aspect_ratio": (86, 54),  # CR80 standard card size is 86mm x 54mm
-    "gaussian_blur_radius": 5,  # higher radius = more blur
-    "canny_lowerthreshold_ratio": 0.03,  # rejected if pixel gradient below lower threshold (9)
-    "canny_upperthreshold_ratio": 0.10,  # accepted if pixel gradient above upper threshold (30)
-    "dilate_kernel_size": 3,  # larger kernel = thicker lines
-    "houghline_threshold_ratio": 0.5,  # minimum intersections to detect a line (150)
-    "houghline_minlinelength_ratio": 0.2,  # minimum length of a line (60)
-    "houghline_maxlinegap_ratio": 0.005,  # maximum gap between two points to form a line (2)
-    "area_detection_ratio": 0.15,  # ratio of the detection area to the image area (45)
-    "corner_quality_ratio": 0.99,  # higher value = stricter corner detection
-    "wait_frames": 0,  # number of consecutive valid frames to wait
+    "resizedWidth": 300,  # new width of sized down image for faster processing
+    "detectionAreaRatio": 0.10,  # ratio of the detection area to the image area (30)
+    "sigma": 1.0,  # sigma for gaussian blur
+    "cannyLowerThreshold": 10,  # rejected if pixel gradient is below lower threshold
+    "cannyUpperThreshold": 30,  # accepted if pixel gradient is above upper threshold
+    "houghlineThreshold": 80,  # minimum intersections to detect a line
+    "houghlineMinLineLengthRatio": 0.1,  # minimum length of a line to detect (30)
+    "houghlineMaxLineGapRatio": 0.3,  # maximum gap between two potential lines to join into 1 line (30)
 }
 
 RED = (0, 0, 255)
@@ -52,67 +47,57 @@ def create_trackbars() -> None:
     cv2.namedWindow("Parameters", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Parameters", 640, 0)
     cv2.createTrackbar(
-        "Gaussian Blur Radius",
+        "Gaussian Blur Sigma",
         "Parameters",
-        PARAMS["gaussian_blur_radius"],
-        21,
-        lambda x: print(f"Gaussian Blur Radius: {x}"),
+        int(PARAMS["sigma"] * 100),
+        100,
+        lambda x: print(f"Gaussian Blur Sigma: {x}"),
     )
     cv2.createTrackbar(
         "Canny Lower Threshold Ratio",
         "Parameters",
-        int(PARAMS["canny_lowerthreshold_ratio"] * 100),
+        int(PARAMS["cannyLowerThreshold"] * 100),
         100,
         lambda x: print(f"Canny Lower Threshold Ratio: {x / 100}"),
     )
     cv2.createTrackbar(
         "Canny Upper Threshold Ratio",
         "Parameters",
-        int(PARAMS["canny_upperthreshold_ratio"] * 100),
+        int(PARAMS["cannyUpperThreshold"] * 100),
         100,
         lambda x: print(f"Canny Upper Threshold Ratio: {x / 100}"),
     )
     cv2.createTrackbar(
-        "Dilate Kernel Size",
-        "Parameters",
-        PARAMS["dilate_kernel_size"],
-        21,
-        lambda x: print(f"Dilate Kernel Size: {x}"),
-    )
-    cv2.createTrackbar(
         "Houghline Threshold Ratio",
         "Parameters",
-        int(PARAMS["houghline_threshold_ratio"] * 100),
+        int(PARAMS["houghlineThreshold"] * 100),
         100,
         lambda x: print(f"Houghline Threshold Ratio: {x / 100}"),
     )
     cv2.createTrackbar(
         "Area Detection Ratio",
         "Parameters",
-        int(PARAMS["area_detection_ratio"] * 100),
+        int(PARAMS["detectionAreaRatio"] * 100),
         100,
         lambda x: print(f"Area Detection Ratio: {x / 100}"),
     )
 
 
 def update_params() -> None:
-    PARAMS["gaussian_blur_radius"] = cv2.getTrackbarPos(
-        "Gaussian Blur Radius", "Parameters"
-    )
-    PARAMS["gaussian_blur_radius"] += int(not (PARAMS["gaussian_blur_radius"] % 2))
-    PARAMS["canny_lowerthreshold_ratio"] = (
+    PARAMS["sigma"] = cv2.getTrackbarPos("Gaussian Blur Sigma", "Parameters") / 100
+    PARAMS["cannyLowerThreshold"] = (
         cv2.getTrackbarPos("Canny Lower Threshold Ratio", "Parameters") / 100
     )
-    PARAMS["canny_upperthreshold_ratio"] = (
+    PARAMS["cannyUpperThreshold"] = (
         cv2.getTrackbarPos("Canny Upper Threshold Ratio", "Parameters") / 100
     )
     PARAMS["dilate_kernel_size"] = cv2.getTrackbarPos(
         "Dilate Kernel Size", "Parameters"
     )
-    PARAMS["houghline_threshold_ratio"] = (
+    PARAMS["houghlineThreshold"] = (
         cv2.getTrackbarPos("Houghline Threshold Ratio", "Parameters") / 100
     )
-    PARAMS["area_detection_ratio"] = (
+    PARAMS["detectionAreaRatio"] = (
         cv2.getTrackbarPos("Area Detection Ratio", "Parameters") / 100
     )
 
@@ -121,7 +106,7 @@ def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
     """Apply a rectangle mask to capture only a portion of the image"""
 
     mask_border = (
-        int(PARAMS["max_size"] * PARAMS["area_detection_ratio"]) if DEBUG else 0
+        int(PARAMS["resizedWidth"] * PARAMS["detectionAreaRatio"]) if DEBUG else 0
     )
     maskW, maskH = PARAMS["mask_aspect_ratio"]
     maskW, maskH = (
@@ -157,8 +142,8 @@ def mask_video(img: np.ndarray, camW: int, camH: int) -> np.ndarray:
     img = cv2.resize(
         img,
         (
-            PARAMS["max_size"],
-            int(PARAMS["max_size"] / img.shape[1] * img.shape[0]),
+            PARAMS["resizedWidth"],
+            int(PARAMS["resizedWidth"] / img.shape[1] * img.shape[0]),
         ),
     )
 
@@ -170,54 +155,57 @@ def process_image(img: np.ndarray) -> np.ndarray:
 
     # Convert to grayscale
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    preview_grayscale = img.copy()
     if SHOW_PREVIEW:
         preview_grayscale = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     # Apply Gaussian blur to reduce noise
     img = cv2.GaussianBlur(
-        img, (PARAMS["gaussian_blur_radius"], PARAMS["gaussian_blur_radius"]), 0
+        img, ksize=(0, 0), sigmaX=PARAMS["sigma"], sigmaY=PARAMS["sigma"]
     )
 
     # Apply Canny edge detection to find edges
     img = cv2.Canny(
         img,
-        int(PARAMS["max_size"] * PARAMS["canny_lowerthreshold_ratio"]),
-        int(PARAMS["max_size"] * PARAMS["canny_upperthreshold_ratio"]),
+        int(PARAMS["resizedWidth"] * PARAMS["cannyLowerThreshold"]),
+        int(PARAMS["resizedWidth"] * PARAMS["cannyUpperThreshold"]),
     )
     if SHOW_PREVIEW:
         preview_findlines = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     # Dilate the image to strengthen lines and edges
-    img = cv2.dilate(
-        img,
-        cv2.getStructuringElement(
-            cv2.MORPH_RECT,
-            (
-                PARAMS["dilate_kernel_size"],
-                PARAMS["dilate_kernel_size"],
-            ),
-        ),
-    )
-    if SHOW_PREVIEW:
-        preview_end = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    # img = cv2.dilate(
+    #     img,
+    #     cv2.getStructuringElement(
+    #         cv2.MORPH_RECT,
+    #         (
+    #             PARAMS["dilate_kernel_size"],
+    #             PARAMS["dilate_kernel_size"],
+    #         ),
+    #     ),
+    # )
+    # if SHOW_PREVIEW:
+    #     preview_end = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     return (
         img,
-        np.vstack([preview_grayscale, preview_end]) if SHOW_PREVIEW else None,
+        np.vstack([preview_grayscale, preview_findlines]) if SHOW_PREVIEW else None,
         preview_grayscale,
     )
 
 
-def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.ndarray]:
+def find_lines_and_corners(
+    img: np.ndarray, mask_dims: tuple[int] = (-1, -1)
+) -> tuple[np.ndarray]:
     """Find the lines in the binarized image"""
 
     imgH, imgW = img.shape
-    maskH, maskW, mask_border = mask_dims
-    detectionH = int(imgH * PARAMS["area_detection_ratio"] / 2)
-    detectionW = int(imgW * PARAMS["area_detection_ratio"] / 2)
-    if DEBUG:
-        detectionH = int(imgH * mask_border / maskH)
-        detectionW = int(imgW * mask_border / maskW)
+    # maskH, maskW, mask_border = mask_dims
+    detectionH = int(imgH * PARAMS["detectionAreaRatio"] / 2)
+    detectionW = int(imgW * PARAMS["detectionAreaRatio"] / 2)
+    # if DEBUG:
+    #     detectionH = int(imgH * mask_border / maskH)
+    #     detectionW = int(imgW * mask_border / maskW)
     shift_x, shift_y = imgW - detectionW, imgH - detectionH
 
     # Section off the image into 4 areas to check for lines
@@ -232,24 +220,25 @@ def find_lines_and_corners(img: np.ndarray, mask_dims: tuple[int]) -> tuple[np.n
         """Use the less efficient Hough Lines Transform to find lines in the image
         HoughLinesP() is faster but returns Cartesian instead of polar coordinates
         Because many lines will be found, return only 5 of them to reduce processing time"""
-        lines = cv2.HoughLines(
+        # lines = cv2.HoughLines(
+        #     region,
+        #     1,
+        #     np.pi / 180,
+        #     int(PARAMS["resizedWidth"] * PARAMS["houghlineThreshold"]),
+        # )
+        # return lines[:1] if lines is not None else np.array([])
+
+        lines = cv2.HoughLinesP(
             region,
             1,
             np.pi / 180,
-            int(PARAMS["max_size"] * PARAMS["houghline_threshold_ratio"]),
+            int(PARAMS["resizedWidth"] * PARAMS["houghlineThreshold"]),
+            np.array([]),
+            int(PARAMS["resizedWidth"] * PARAMS["houghlineMinLineLengthRatio"]),
+            int(PARAMS["resizedWidth"] * PARAMS["houghlineMaxLineGapRatio"]),
         )
-        return lines[:1] if lines is not None else np.array([])
 
-    # Use Probabilistic Hough Transform to find lines in the image
-    # get_houghlines = lambda region: cv2.HoughLinesP(
-    #     region,
-    #     1,
-    #     np.pi / 180,
-    #     int(PARAMS["max_size"] * PARAMS["houghline_minlinelength_ratio"]),
-    #     np.array([]),
-    #     int(PARAMS["max_size"] * PARAMS["houghline_minlinelength_ratio"]),
-    #     int(PARAMS["max_size"] * PARAMS["houghline_maxlinegap_ratio"]),
-    # )
+        return lines if lines is not None else np.array([])
 
     lines_left, lines_right, lines_top, lines_bottom = map(
         get_houghlines, [region_left, region_right, region_top, region_bottom]
@@ -550,6 +539,15 @@ def main() -> None:
         # Update PARAMS with trackbar values
         if SHOW_PREVIEW:
             update_params()
+
+        # Crop image to be 480 x 301 from the center
+        frameW, frameH = 480, 301
+        guideW, guideH = 440, 277
+
+        cropped = frame[
+            camH // 2 - frameH // 2 : camH // 2 + frameH // 2,
+            camW // 2 - frameW // 2 : camW // 2 + frameW // 2,
+        ]
 
         # Process image and get the corners
         img_resized, masked_frame, mask_dims = mask_video(frame, camH, camW)

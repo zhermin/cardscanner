@@ -10,14 +10,15 @@ using namespace std;
 
 struct {
   float resizedWidth =
-      480; // new width of sized down image for faster processing
+      300; // new width of sized down image for faster processing
   float detectionAreaRatio =
-      0.15; // ratio of the detection area to the image area (30)
+      0.10;          // ratio of the detection area to the image area (30)
+  float sigma = 1.0; // higher sigma for more gaussian blur
   int cannyLowerThreshold =
-      60; // rejected if pixel gradient is below lower threshold
+      10; // rejected if pixel gradient is below lower threshold
   int cannyUpperThreshold =
-      180; // accepted if pixel gradient is above upper threshold
-  int houghlineThreshold = 30; // minimum intersections to detect a line
+      30; // accepted if pixel gradient is above upper threshold
+  int houghlineThreshold = 60; // minimum intersections to detect a line
   float houghlineMinLineLengthRatio =
       0.1; // minimum length of a line to detect (30)
   float houghlineMaxLineGapRatio =
@@ -52,9 +53,10 @@ float distance(point_t p1, point_t p2) {
   return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
 }
 
-vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
-                           int frameHeight, int guideFinderWidth,
-                           int guideFinderHeight) {
+pair<vector<int>, float>
+CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
+                               int frameHeight, int guideFinderWidth,
+                               int guideFinderHeight) {
 
   auto grayscaled = grayscale(frameByteArray, frameWidth, frameHeight);
 
@@ -71,7 +73,7 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
 
   // use houghlines to detect lines
   HoughLineDetector(
-      frameByteArray, frameWidth, frameHeight, scale, scale,
+      grayscaled, frameWidth, frameHeight, scale, scale,
       PARAMS.cannyLowerThreshold, PARAMS.cannyUpperThreshold, 1, PI / 180,
       PARAMS.houghlineMinLineLengthRatio * PARAMS.resizedWidth,
       PARAMS.houghlineMaxLineGapRatio * PARAMS.resizedWidth,
@@ -84,13 +86,6 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
   vector<line_float_t> linesRight;
   for (int i = 0; i < lines.size(); i++) {
     line_float_t line = lines[i];
-    // if lines both x or y are 1 pixel away from edges, reject as may be noise
-    if (line.startx == 1 && line.endx == 1 ||
-        line.starty == 1 && line.endy == 1 ||
-        line.startx == frameWidth - 1 && line.endx == frameWidth - 1 ||
-        line.starty == frameHeight - 1 && line.endy == frameHeight - 1)
-      continue;
-
     if (line.startx < frameWidth * PARAMS.detectionAreaRatio &&
         line.endx < frameWidth * PARAMS.detectionAreaRatio) {
       linesLeft.push_back(line);
@@ -131,28 +126,42 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
   // within detection area ratio multiplied by the image width and height
   vector<point_t> cornersTopLeft, cornersTopRight, cornersBottomLeft,
       cornersBottomRight;
-  for (int i = 0; i < foundLines.size(); i++) {
-    line_float_t line = foundLines[i];
-    int minx = min(line.startx, line.endx);
-    int miny = min(line.starty, line.endy);
-    int maxx = max(line.startx, line.endx);
-    int maxy = max(line.starty, line.endy);
-    if (minx <= frameWidth * PARAMS.detectionAreaRatio &&
-        miny <= frameHeight * PARAMS.detectionAreaRatio) {
-      cornersTopLeft.push_back(point_t{minx, miny});
-    }
-    if (maxx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
-        miny <= frameHeight * PARAMS.detectionAreaRatio) {
-      cornersTopRight.push_back(point_t{maxx, miny});
-    }
-    if (minx <= frameWidth * PARAMS.detectionAreaRatio &&
-        maxy >= frameHeight * (1 - PARAMS.detectionAreaRatio)) {
-      cornersBottomLeft.push_back(point_t{minx, maxy});
-    }
-    if (maxx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
-        maxy >= frameHeight * (1 - PARAMS.detectionAreaRatio)) {
-      cornersBottomRight.push_back(point_t{maxx, maxy});
-    }
+
+  for (int i = 0; i < linesTop.size(); i++) {
+    line_float_t line = linesTop[i];
+    if (line.startx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.starty <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopLeft.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.endy <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopRight.push_back(point_t{(int)line.endx, (int)line.endy});
+  }
+  for (int i = 0; i < linesBottom.size(); i++) {
+    line_float_t line = linesBottom[i];
+    if (line.startx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.starty >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomLeft.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.endy >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomRight.push_back(point_t{(int)line.endx, (int)line.endy});
+  }
+  for (int i = 0; i < linesLeft.size(); i++) {
+    line_float_t line = linesLeft[i];
+    if (line.startx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.starty <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopLeft.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx <= frameWidth * PARAMS.detectionAreaRatio &&
+        line.endy >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomLeft.push_back(point_t{(int)line.endx, (int)line.endy});
+  }
+  for (int i = 0; i < linesRight.size(); i++) {
+    line_float_t line = linesRight[i];
+    if (line.startx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.starty <= frameHeight * PARAMS.detectionAreaRatio)
+      cornersTopRight.push_back(point_t{(int)line.startx, (int)line.starty});
+    if (line.endx >= frameWidth * (1 - PARAMS.detectionAreaRatio) &&
+        line.endy >= frameHeight * (1 - PARAMS.detectionAreaRatio))
+      cornersBottomRight.push_back(point_t{(int)line.endx, (int)line.endy});
   }
 
   // store the corners of the frame and detection zones
@@ -184,8 +193,10 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
   // save the furthest x and y coordinates from the four corners and
   // calculate score for how far away the corners are from the guide finder
   point_t cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight;
+  int cornerCount = 0;
 
   if (cornersTopLeft.size() > 0) {
+    cornerCount++;
     cornerTopLeft = cornersTopLeft[0];
     for (int i = 0; i < cornersTopLeft.size(); i++) {
       cornerTopLeft.x = min(cornerTopLeft.x, cornersTopLeft[i].x);
@@ -204,6 +215,7 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   if (cornersTopRight.size() > 0) {
+    cornerCount++;
     cornerTopRight = cornersTopRight[0];
     for (int i = 0; i < cornersTopRight.size(); i++) {
       cornerTopRight.x = max(cornerTopRight.x, cornersTopRight[i].x);
@@ -222,6 +234,7 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   if (cornersBottomLeft.size() > 0) {
+    cornerCount++;
     cornerBottomLeft = cornersBottomLeft[0];
     for (int i = 0; i < cornersBottomLeft.size(); i++) {
       cornerBottomLeft.x = min(cornerBottomLeft.x, cornersBottomLeft[i].x);
@@ -242,6 +255,7 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   if (cornersBottomRight.size() > 0) {
+    cornerCount++;
     cornerBottomRight = cornersBottomRight[0];
     for (int i = 0; i < cornersBottomRight.size(); i++) {
       cornerBottomRight.x = max(cornerBottomRight.x, cornersBottomRight[i].x);
@@ -261,6 +275,24 @@ vector<point_t> getCorners(unsigned char *frameByteArray, int frameWidth,
     cornerBottomRight = {-1, -1, 0};
   }
 
+  // append the corner count and corner coordinates to an output int vector
+  vector<int> foundCorners;
+
+  foundCorners.push_back(cornerCount);
+  foundCorners.push_back(cornerTopLeft.x);
+  foundCorners.push_back(cornerTopLeft.y);
+  foundCorners.push_back(cornerTopRight.x);
+  foundCorners.push_back(cornerTopRight.y);
+  foundCorners.push_back(cornerBottomLeft.x);
+  foundCorners.push_back(cornerBottomLeft.y);
+  foundCorners.push_back(cornerBottomRight.x);
+  foundCorners.push_back(cornerBottomRight.y);
+
+  // calculate the average score of the corners
+  float cornerScore = (cornerTopLeft.score + cornerTopRight.score +
+                       cornerBottomLeft.score + cornerBottomRight.score) /
+                      4;
+
   // return the vector of found corners
-  return {cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight};
+  return make_pair(foundCorners, cornerScore);
 }
