@@ -17,13 +17,13 @@ private:
 public:
   struct {
     float resizedWidth = 300;        // new width of sized down image
-    float detectionAreaRatio = 0.10; // ratio of detection area to image area
-    float sigma = 1.5;               // higher sigma for more gaussian blur
-    int cannyLowerThreshold = 10;    // reject if pixel gradient below threshold
-    int cannyUpperThreshold = 30;    // accept if pixel gradient above threshold
-    int houghlineThreshold = 70;     // minimum intersections to detect a line
-    float houghlineMinLineLengthRatio = 0.10; // min length of line to detect
-    float houghlineMaxLineGapRatio = 0.10; // max gap between 2 potential lines
+    float detectionAreaRatio = 0.08; // ratio of detection area to image area
+    float sigma = 3;                 // higher sigma for more gaussian blur
+    int cannyLowerThreshold = 20;    // reject if pixel gradient below threshold
+    int cannyUpperThreshold = 25;    // accept if pixel gradient above threshold
+    int houghlineThreshold = 50;     // minimum intersections to detect a line
+    float houghlineMinLineLengthRatio = 0.30; // min length of line to detect
+    float houghlineMaxLineGapRatio = 0.30; // max gap between 2 potential lines
   } params;
 
   pair<vector<point_t>, int> getCorners(unsigned char *frameByteArray,

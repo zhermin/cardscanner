@@ -56,6 +56,25 @@ int main() {
     cvtColor(cropped, croppedBGR, COLOR_RGBA2BGR);
     cvtColor(guideview, guideviewBGR, COLOR_RGBA2BGR);
 
+    // Display RGB channels separately
+    // Mat gray;
+    // cvtColor(croppedBGR, gray, COLOR_BGR2GRAY);
+    // Mat bgr[3];
+    // split(croppedBGR, bgr);
+    // imshow("Blue", bgr[0]);
+    // imshow("Green", bgr[1]);
+    // imshow("Red", bgr[2]);
+    // imshow("Gray", gray);
+
+    // Gaussian blur
+    // Mat blurred;
+    // GaussianBlur(gray, blurred, Size(0, 0), 1.5);
+
+    // Otsu thresholding
+    // Mat thresh;
+    // threshold(blurred, thresh, 0, 255, THRESH_BINARY | THRESH_OTSU);
+    // imshow("Threshold", thresh);
+
     // Get the corners
     auto corners_cornerCount = cardCornerDetector.getCorners(
         cropped.data, frameW, frameH, guideW, guideH);
@@ -64,17 +83,22 @@ int main() {
     int cornerCount = corners_cornerCount.second;
 
     // Print number of corners found (score > 0)
+    int cornerScore = (corners[0].score + corners[1].score + corners[2].score +
+                       corners[3].score) /
+                      4 * 100;
     if (cornerCount >= 3) {
-      cout << cornerCount << " corners found!" << endl;
+      cout << "[" << cornerScore << "] " << cornerCount << " corners found!"
+           << endl;
     } else {
-      cout << cornerCount << endl;
+      cout << "[" << cornerScore << "] " << cornerCount << endl;
     }
 
-    // Draw the corners on the cropped image using OpenCV
+    // Draw the corners on the cropped and guideview image using OpenCV
     for (int i = 0; i < 4; i++) {
       point_t c = corners[i];
       if (c.score > 0) {
         circle(croppedBGR, Point(c.x, c.y), 5, Scalar(0, 0, 255), -1);
+        circle(guideviewBGR, Point(c.x, c.y), 5, Scalar(0, 0, 255), -1);
       }
     }
 
