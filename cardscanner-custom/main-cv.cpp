@@ -17,7 +17,9 @@ int main() {
   string app_name = "Card Scanner";
 
   // Load camera or video using OpenCV
-  VideoCapture cap(0);
+  VideoCapture cap;
+  cap.open(1);
+
   Mat img;
 
   // Calculate number of frames to wait for valid frames
@@ -43,8 +45,8 @@ int main() {
     cvtColor(img, rgba, COLOR_BGR2RGBA);
 
     // Crop image to 480 x 301 for frame and 440 x 277 from center
-    int frameW = 480, frameH = 301;
     int guideW = 440, guideH = 277;
+    int frameW = guideW + 20, frameH = guideH + 6;
 
     Mat cropped, guideview;
     rgba(Rect(camW / 2 - frameW / 2, camH / 2 - frameH / 2, frameW, frameH))
@@ -98,7 +100,6 @@ int main() {
       point_t c = corners[i];
       if (c.score > 0) {
         circle(croppedBGR, Point(c.x, c.y), 5, Scalar(0, 0, 255), -1);
-        circle(guideviewBGR, Point(c.x, c.y), 5, Scalar(0, 0, 255), -1);
       }
     }
 

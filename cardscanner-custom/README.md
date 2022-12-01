@@ -69,20 +69,15 @@ However, the performance of the model might worsen in this version because some 
 
 ```cpp
 struct {
-  float resizedWidth =
-      480; // new width of sized down image for faster processing
-  float detectionAreaRatio =
-      0.15; // ratio of the detection area to the image area (30)
-  int cannyLowerThreshold =
-      60; // rejected if pixel gradient is below lower threshold
-  int cannyUpperThreshold =
-      180; // accepted if pixel gradient is above upper threshold
-  int houghlineThreshold = 30; // minimum intersections to detect a line
-  float houghlineMinLineLengthRatio =
-      0.1; // minimum length of a line to detect (30)
-  float houghlineMaxLineGapRatio =
-      0.1; // maximum gap between two potential lines to join into 1 line (30)
-} PARAMS;
+    float resizedWidth = 300;        // new width of sized down image
+    float detectionAreaRatio = 0.08; // ratio of detection area to image area
+    float sigma = 3;                 // higher sigma for more gaussian blur
+    int cannyLowerThreshold = 20;    // reject if pixel gradient below threshold
+    int cannyUpperThreshold = 25;    // accept if pixel gradient above threshold
+    int houghlineThreshold = 50;     // minimum intersections to detect a line
+    float houghlineMinLineLengthRatio = 0.30; // min length of line to detect
+    float houghlineMaxLineGapRatio = 0.30; // max gap between 2 potential lines
+} params;
 ```
 
 # Metrics
@@ -92,9 +87,8 @@ struct {
 - Accuracy: Auto-capturing when it is supposed to ("Predicted" Positives)
 - Stability: NOT auto-capturing when it is not supposed to ("Predicted" Negatives)
 
-|      |                 |         |          |           |
-| ---- | --------------- | ------- | -------- | --------- |
 |      | Pure Model Size | Speed   | Accuracy | Stability |
+| ---- | --------------- | ------- | -------- | --------- |
 | v0.1 | 17 MB w/ OpenCV |         |          |           |
 | v0.2 | ~30KB           | 15-20ms |          |           |
 | v0.3 | ~30KB           | 15-20ms |          |           |

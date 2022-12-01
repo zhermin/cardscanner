@@ -85,5 +85,12 @@ img(cv::Rect(x, y, width, height)).copyTo(cropped);
 Build APK, to be found in `/app/build/outputs/apk/debug/app-debug.apk`
 
 ```bash
-gradlew assembleDebug
+# root folder of the project
+./gradlew assembleDebug
+```
+
+View logs for crash reports while in debug mode using
+
+```bash
+adb logcat
 ```

@@ -24,13 +24,13 @@ line_float_t CardCornerDetector::flipLine(line_float_t line) {
 }
 
 float CardCornerDetector::distance(point_t p1, point_t p2) {
-  return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+  return (float)sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
 }
 
 pair<vector<point_t>, int>
 CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
                                int frameHeight, int guideFinderWidth,
-                               int guideFinderHeight) {
+                               int guideFinderHeight) const {
 
   auto grayscaled = Utils::grayscale(frameByteArray, frameWidth, frameHeight);
 
@@ -57,8 +57,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   int detectionArea = frameWidth * params.detectionAreaRatio;
   vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
 
-  for (int i = 0; i < lines.size(); i++) {
-    line_float_t line = lines[i];
+  for (auto line : lines) {
     if (line.startx < detectionArea && line.endx < detectionArea) {
       linesLeft.push_back(line);
     } else if (line.startx > frameWidth - detectionArea &&
@@ -87,8 +86,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   int numTopStart = 0, numTopEnd = 0, numBottomStart = 0, numBottomEnd = 0,
       numLeftStart = 0, numLeftEnd = 0, numRightStart = 0, numRightEnd = 0;
 
-  for (int i = 0; i < linesTop.size(); i++) {
-    line_float_t line = linesTop[i];
+  for (auto line : linesTop) {
     if (line.startx > line.endx)
       line = flipLine(line);
     if (line.startx <= detectionArea && line.starty <= detectionArea) {
@@ -115,8 +113,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     }
   }
 
-  for (int i = 0; i < linesBottom.size(); i++) {
-    line_float_t line = linesBottom[i];
+  for (auto line : linesBottom) {
     if (line.startx > line.endx)
       line = flipLine(line);
     if (line.startx <= detectionArea &&
@@ -147,8 +144,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     }
   }
 
-  for (int i = 0; i < linesLeft.size(); i++) {
-    line_float_t line = linesLeft[i];
+  for (auto line : linesLeft) {
     if (line.starty > line.endy)
       line = flipLine(line);
     if (line.startx <= detectionArea && line.starty <= detectionArea) {
@@ -176,8 +172,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     }
   }
 
-  for (int i = 0; i < linesRight.size(); i++) {
-    line_float_t line = linesRight[i];
+  for (auto line : linesRight) {
     if (line.starty > line.endy)
       line = flipLine(line);
     if (line.startx >= frameWidth - detectionArea &&
@@ -298,23 +293,23 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     cornerBottomRight = {-1, -1, 0};
   }
 
-  // // append the corner count and corner coordinates to an output int vector
-  // vector<int> foundCorners;
+  // append the corner count and corner coordinates to an output int vector
+  vector<int> foundCorners;
 
-  // foundCorners.push_back(cornerCount);
-  // foundCorners.push_back(cornerTopLeft.x);
-  // foundCorners.push_back(cornerTopLeft.y);
-  // foundCorners.push_back(cornerTopRight.x);
-  // foundCorners.push_back(cornerTopRight.y);
-  // foundCorners.push_back(cornerBottomLeft.x);
-  // foundCorners.push_back(cornerBottomLeft.y);
-  // foundCorners.push_back(cornerBottomRight.x);
-  // foundCorners.push_back(cornerBottomRight.y);
+  foundCorners.push_back(cornerCount);
+  foundCorners.push_back(cornerTopLeft.x);
+  foundCorners.push_back(cornerTopLeft.y);
+  foundCorners.push_back(cornerTopRight.x);
+  foundCorners.push_back(cornerTopRight.y);
+  foundCorners.push_back(cornerBottomLeft.x);
+  foundCorners.push_back(cornerBottomLeft.y);
+  foundCorners.push_back(cornerBottomRight.x);
+  foundCorners.push_back(cornerBottomRight.y);
 
   // calculate the average score of the corners
-  // float cornerScore = (cornerTopLeft.score + cornerTopRight.score +
-  //                      cornerBottomLeft.score + cornerBottomRight.score) /
-  //                     4;
+  float cornerScore = (cornerTopLeft.score + cornerTopRight.score +
+                       cornerBottomLeft.score + cornerBottomRight.score) /
+                      4;
 
   //// --- START OF DRAWINGS --- ////
   // draw the found lines on a blank image

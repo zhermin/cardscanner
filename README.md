@@ -52,9 +52,8 @@ The target of this IC Edge Detection model is to allow **"at least 3 corners of 
 
 **Note:** Due to the low resolution of the webcam and low quality of the printed KTP card used in the video demos below, the words on the sample KTP card will not be very legible
 
-|     |     |     |     |     |
-| --- | --- | --- | --- | --- |
 | Scenario | Condition(s) | Expected Handling (Auto-Capture Decision) | Demo Video | Remarks |
+| -------- | ------------ | ----------------------------------------- | ---------- | ------- |
 | Happy Flow | All 5 critical requirements are met | Auto-capture should be triggered as it fulfils all 5 critical requirements:<br><br>1. Card is ID e-KTP; AND<br>2. Card is generally free of quality issue (not blurry, not blocked); AND<br>3. At least 3 corners of the card are visible within the guided viewfinder; AND<br>4. Well-lit condition (good lighting; not too dark, not too bright that it diminishes card details); AND<br>5. Card position is in a proper angle<br><br>Auto-capture should be triggered | ![Scenario 1](assets/demo/scenario1-happyflow.mov) |     |
 | At least 3 corners of the card are visible within the guided viewfinder | Only 1 corner blocked | Auto-capture should be triggered as it fulfils all 5 critical requirements | ![Scenario 2](assets/demo/scenario2-blocked1.mov) | The model will auto-capture even if the object is blocking the center of the card with the key information as long as it detects 3 corners |
 | Less than 3 corners of the card are visible within the guided viewfinder | 2 corners blocked by object | Auto-capture should not be triggered as "at least 3 corners of the card is visible" is a critical requirement | ![Scenario 3](assets/demo/scenario3-blocked2.mov) |     |
@@ -150,26 +149,19 @@ Recommended by , we can replace existing functions such as Canny edge detector w
 
 Since the rest of the steps in the Auto Capture pipeline (Card Type/Flip and Quality Check) does not use OpenCV and are instead NN-based, we can completely eliminate the use of OpenCV along the entire pipeline and just use some simple custom image input and output functions to feed into the small MNN model. This is similar to the strategy employed by the Aurora Liveness Check app, which is purely NN-based as well. This app was highlighted by , since he will also be using this technique for the Card Type Check model. This approach will also require some time and effort to gather training data and train the model.
 
-# Tuneable Parameters
+### Streamlined Tuneable Parameters
 
-**Note:** Ratio parameters are based off of the `max_size`  parameter (default = 300 pixels), actual values are in round brackets in the comments
-
-```python
-PARAMS = {
-    "max_size": 300,                       # width of scaled down image for faster processing
-    "frame_scaling_factor": 0.6,           # ratio of unmasked area to the entire frame (180)
-    "mask_aspect_ratio": (86, 54),         # CR80 standard card size is 86mm x 54mm
-    "gaussian_blur_radius": 5,             # higher radius = more blur
-    "canny_lowerthreshold_ratio": 0.03,    # rejected if pixel gradient below lower threshold (9)
-    "canny_upperthreshold_ratio": 0.10,    # accepted if pixel gradient above upper threshold (30)
-    "dilate_structing_element_size": 3,    # larger kernel = thicker lines
-    "houghline_threshold_ratio": 0.5,      # minimum intersections to detect a line (150)
-    "houghline_minlinelength_ratio": 0.2,  # minimum length of a line (60)
-    "houghline_maxlinegap_ratio": 0.005,   # maximum gap between two points to form a line (2)
-    "area_detection_ratio": 0.15,          # ratio of the detection area to the image area (45)
-    "corner_quality_ratio": 0.99,          # higher value = stricter corner detection
-    "wait_frames": 0,                      # number of consecutive valid frames to wait
-}
+```cpp
+struct {
+    float resizedWidth = 300;        // new width of sized down image
+    float detectionAreaRatio = 0.08; // ratio of detection area to image area
+    float sigma = 3;                 // higher sigma for more gaussian blur
+    int cannyLowerThreshold = 20;    // reject if pixel gradient below threshold
+    int cannyUpperThreshold = 25;    // accept if pixel gradient above threshold
+    int houghlineThreshold = 50;     // minimum intersections to detect a line
+    float houghlineMinLineLengthRatio = 0.30; // min length of line to detect
+    float houghlineMaxLineGapRatio = 0.30; // max gap between 2 potential lines
+} params;
 ```
 
 # Model Performance Evaluation
@@ -181,13 +173,12 @@ For the model performance evaluation, we will target these metrics:
 - Accuracy: Auto-capturing when it is supposed to ("Predicted" Positives)
 - Stability: NOT auto-capturing when it is not supposed to ("Predicted" Negatives)
 
-|     |     |     |     |     |     |
-| --- | --- | --- | --- | --- | --- |
-|     | Pure Model Size | Model Size with OpenCV Lib | Speed | Accuracy | Stability |
-| Edge Detection v0.1 |     |     |     |     |     |
-| Edge Detection v0.2 |     |     |     |     |     |
-| Edge Detection v0.3 |     |     |     |     |     |
-| Edge Detection v0.4 |     |     |     |     |     |
+|                     | Pure Model Size | Model Size with OpenCV Lib | Speed | Accuracy | Stability |
+| ------------------- | --------------- | -------------------------- | ----- | -------- | --------- |
+| Edge Detection v0.1 |                 |                            |       |          |           |
+| Edge Detection v0.2 |                 |                            |       |          |           |
+| Edge Detection v0.3 |                 |                            |       |          |           |
+| Edge Detection v0.4 |                 |                            |       |          |           |
 
 # Sources
 

@@ -1,5 +1,9 @@
 #include "houghlines.h"
 
+// [DEBUG] OpenCV Imports
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+
 #ifndef ROUND
 #define ROUND (0.5F)
 #endif
@@ -917,6 +921,9 @@ static void _hough_line_detector(unsigned char *src, int w, int h, float scaleX,
   edge = new unsigned char[sub_src->xsize * sub_src->ysize];
   canny_detector(sub_src->data, edge, sub_src->xsize, sub_src->ysize,
                  canny_low_thresh, canny_high_thresh);
+
+  // [DEBUG] display the edge map using OpenCV
+  cv::imshow("edge", cv::Mat(sub_src->ysize, sub_src->xsize, CV_8UC1, edge));
 
   switch (_type) {
   case HOUGH_LINE_STANDARD:
