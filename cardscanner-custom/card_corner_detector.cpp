@@ -52,7 +52,10 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
       params.houghlineThreshold, HOUGH_LINE_PROBABILISTIC, bbox, lines);
 
   // only keep the lines in the detection regions (top, bottom, left, right)
-  int detectionArea = frameWidth * params.detectionAreaRatio;
+  float detectionArea = (float)frameWidth * params.detectionAreaRatio;
+  float detectionAreaRight = (float)frameWidth - detectionArea;
+  float detectionAreaBottom = (float)frameHeight - detectionArea;
+
   std::vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
 
   for (auto line : lines) {
@@ -91,21 +94,21 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
       if (numTopStart == 0) {
         pointTopStart = {(int)line.startx, (int)line.starty, 0};
       } else {
-        pointTopStart.x =
-            (pointTopStart.x * numTopStart + line.startx) / (numTopStart + 1);
-        pointTopStart.y =
-            (pointTopStart.y * numTopStart + line.starty) / (numTopStart + 1);
+        pointTopStart.x = (pointTopStart.x * numTopStart + (int)line.startx) /
+                          (numTopStart + 1);
+        pointTopStart.y = (pointTopStart.y * numTopStart + (int)line.starty) /
+                          (numTopStart + 1);
       }
       numTopStart++;
     }
-    if (line.endx >= frameWidth - detectionArea && line.endy <= detectionArea) {
+    if (line.endx >= detectionAreaRight && line.endy <= detectionArea) {
       if (numTopEnd == 0) {
         pointTopEnd = {(int)line.endx, (int)line.endy, 0};
       } else {
         pointTopEnd.x =
-            (pointTopEnd.x * numTopEnd + line.endx) / (numTopEnd + 1);
+            (pointTopEnd.x * numTopEnd + (int)line.endx) / (numTopEnd + 1);
         pointTopEnd.y =
-            (pointTopEnd.y * numTopEnd + line.endy) / (numTopEnd + 1);
+            (pointTopEnd.y * numTopEnd + (int)line.endy) / (numTopEnd + 1);
       }
       numTopEnd++;
     }
@@ -114,29 +117,27 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   for (auto line : linesBottom) {
     if (line.startx > line.endx)
       line = flipLine(line);
-    if (line.startx <= detectionArea &&
-        line.starty >= frameHeight - detectionArea) {
+    if (line.startx <= detectionArea && line.starty >= detectionAreaBottom) {
       if (numBottomStart == 0) {
         pointBottomStart = {(int)line.startx, (int)line.starty, 0};
       } else {
         pointBottomStart.x =
-            (pointBottomStart.x * numBottomStart + line.startx) /
+            (pointBottomStart.x * numBottomStart + (int)line.startx) /
             (numBottomStart + 1);
         pointBottomStart.y =
-            (pointBottomStart.y * numBottomStart + line.starty) /
+            (pointBottomStart.y * numBottomStart + (int)line.starty) /
             (numBottomStart + 1);
       }
       numBottomStart++;
     }
-    if (line.endx >= frameWidth - detectionArea &&
-        line.endy >= frameHeight - detectionArea) {
+    if (line.endx >= detectionAreaRight && line.endy >= detectionAreaBottom) {
       if (numBottomEnd == 0) {
         pointBottomEnd = {(int)line.endx, (int)line.endy, 0};
       } else {
-        pointBottomEnd.x =
-            (pointBottomEnd.x * numBottomEnd + line.endx) / (numBottomEnd + 1);
-        pointBottomEnd.y =
-            (pointBottomEnd.y * numBottomEnd + line.endy) / (numBottomEnd + 1);
+        pointBottomEnd.x = (pointBottomEnd.x * numBottomEnd + (int)line.endx) /
+                           (numBottomEnd + 1);
+        pointBottomEnd.y = (pointBottomEnd.y * numBottomEnd + (int)line.endy) /
+                           (numBottomEnd + 1);
       }
       numBottomEnd++;
     }
@@ -149,22 +150,23 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
       if (numLeftStart == 0) {
         pointLeftStart = {(int)line.startx, (int)line.starty, 0};
       } else {
-        pointLeftStart.x = (pointLeftStart.x * numLeftStart + line.startx) /
-                           (numLeftStart + 1);
-        pointLeftStart.y = (pointLeftStart.y * numLeftStart + line.starty) /
-                           (numLeftStart + 1);
+        pointLeftStart.x =
+            (pointLeftStart.x * numLeftStart + (int)line.startx) /
+            (numLeftStart + 1);
+        pointLeftStart.y =
+            (pointLeftStart.y * numLeftStart + (int)line.starty) /
+            (numLeftStart + 1);
       }
       numLeftStart++;
     }
-    if (line.endx <= detectionArea &&
-        line.endy >= frameHeight - detectionArea) {
+    if (line.endx <= detectionArea && line.endy >= detectionAreaBottom) {
       if (numLeftEnd == 0) {
         pointLeftEnd = {(int)line.endx, (int)line.endy, 0};
       } else {
         pointLeftEnd.x =
-            (pointLeftEnd.x * numLeftEnd + line.endx) / (numLeftEnd + 1);
+            (pointLeftEnd.x * numLeftEnd + (int)line.endx) / (numLeftEnd + 1);
         pointLeftEnd.y =
-            (pointLeftEnd.y * numLeftEnd + line.endy) / (numLeftEnd + 1);
+            (pointLeftEnd.y * numLeftEnd + (int)line.endy) / (numLeftEnd + 1);
       }
       numLeftEnd++;
     }
@@ -173,27 +175,27 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   for (auto line : linesRight) {
     if (line.starty > line.endy)
       line = flipLine(line);
-    if (line.startx >= frameWidth - detectionArea &&
-        line.starty <= detectionArea) {
+    if (line.startx >= detectionAreaRight && line.starty <= detectionArea) {
       if (numRightStart == 0) {
         pointRightStart = {(int)line.startx, (int)line.starty, 0};
       } else {
-        pointRightStart.x = (pointRightStart.x * numRightStart + line.startx) /
-                            (numRightStart + 1);
-        pointRightStart.y = (pointRightStart.y * numRightStart + line.starty) /
-                            (numRightStart + 1);
+        pointRightStart.x =
+            (pointRightStart.x * numRightStart + (int)line.startx) /
+            (numRightStart + 1);
+        pointRightStart.y =
+            (pointRightStart.y * numRightStart + (int)line.starty) /
+            (numRightStart + 1);
       }
       numRightStart++;
     }
-    if (line.endx >= frameWidth - detectionArea &&
-        line.endy >= frameHeight - detectionArea) {
+    if (line.endx >= detectionAreaRight && line.endy >= detectionAreaBottom) {
       if (numRightEnd == 0) {
         pointRightEnd = {(int)line.endx, (int)line.endy, 0};
       } else {
-        pointRightEnd.x =
-            (pointRightEnd.x * numRightEnd + line.endx) / (numRightEnd + 1);
-        pointRightEnd.y =
-            (pointRightEnd.y * numRightEnd + line.endy) / (numRightEnd + 1);
+        pointRightEnd.x = (pointRightEnd.x * numRightEnd + (int)line.endx) /
+                          (numRightEnd + 1);
+        pointRightEnd.y = (pointRightEnd.y * numRightEnd + (int)line.endy) /
+                          (numRightEnd + 1);
       }
       numRightEnd++;
     }
@@ -210,11 +212,13 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   point_t guideFinderBottomRight = {frameWidth - guideFinderGapX,
                                     frameHeight - guideFinderGapY};
 
-  point_t detectionTopLeft = {detectionArea, detectionArea};
-  point_t detectionTopRight = {frameWidth - detectionArea, detectionArea};
-  point_t detectionBottomLeft = {detectionArea, frameHeight - detectionArea};
-  point_t detectionBottomRight = {frameWidth - detectionArea,
-                                  frameHeight - detectionArea};
+  point_t detectionTopLeft = {(int)detectionArea, (int)detectionArea};
+  point_t detectionTopRight = {(int)(frameWidth - detectionArea),
+                               (int)detectionArea};
+  point_t detectionBottomLeft = {(int)detectionArea,
+                                 (int)(frameHeight - detectionArea)};
+  point_t detectionBottomRight = {(int)(frameWidth - detectionArea),
+                                  (int)(frameHeight - detectionArea)};
 
   float frameToGuideDist = distance(point_t{0, 0}, guideFinderTopLeft);
   float detectionToGuideDist = distance(detectionTopLeft, guideFinderTopLeft);
