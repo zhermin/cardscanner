@@ -11,8 +11,6 @@
 // #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 // #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-using namespace std;
-
 line_float_t CardCornerDetector::flipLine(line_float_t line) {
   float temp = line.startx;
   line.startx = line.endx;
@@ -27,7 +25,7 @@ float CardCornerDetector::distance(point_t p1, point_t p2) {
   return (float)sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
 }
 
-pair<vector<point_t>, int>
+std::pair<std::vector<int>, int>
 CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
                                int frameHeight, int guideFinderWidth,
                                int guideFinderHeight) const {
@@ -35,7 +33,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   auto grayscaled = Utils::grayscale(frameByteArray, frameWidth, frameHeight);
 
   // initialize lines vector and bounding box
-  vector<line_float_t> lines;
+  std::vector<line_float_t> lines;
   boundingbox_t bbox;
   bbox.x = 0;
   bbox.y = 0;
@@ -55,7 +53,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
 
   // only keep the lines in the detection regions (top, bottom, left, right)
   int detectionArea = frameWidth * params.detectionAreaRatio;
-  vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
+  std::vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
 
   for (auto line : lines) {
     if (line.startx < detectionArea && line.endx < detectionArea) {
@@ -72,7 +70,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   // combine the region lines
-  vector<line_float_t> foundLines;
+  std::vector<line_float_t> foundLines;
   foundLines.insert(foundLines.end(), linesTop.begin(), linesTop.end());
   foundLines.insert(foundLines.end(), linesBottom.begin(), linesBottom.end());
   foundLines.insert(foundLines.end(), linesLeft.begin(), linesLeft.end());
@@ -223,10 +221,8 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
 
   // the corner points are the average of the 2 edge points if they exist
   point_t cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight;
-  int cornerCount = 0;
 
   if (numTopStart > 0 && numLeftStart > 0) {
-    cornerCount++;
     cornerTopLeft.x = (int)((pointTopStart.x + pointLeftStart.x) / 2);
     cornerTopLeft.y = (int)((pointTopStart.y + pointLeftStart.y) / 2);
     if (cornerTopLeft.x < guideFinderTopLeft.x &&
@@ -242,7 +238,6 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   if (numTopEnd > 0 && numRightStart > 0) {
-    cornerCount++;
     cornerTopRight.x = (int)((pointTopEnd.x + pointRightStart.x) / 2);
     cornerTopRight.y = (int)((pointTopEnd.y + pointRightStart.y) / 2);
     if (cornerTopRight.x > guideFinderTopRight.x &&
@@ -258,7 +253,6 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   if (numBottomStart > 0 && numLeftEnd > 0) {
-    cornerCount++;
     cornerBottomLeft.x = (int)((pointBottomStart.x + pointLeftEnd.x) / 2);
     cornerBottomLeft.y = (int)((pointBottomStart.y + pointLeftEnd.y) / 2);
     if (cornerBottomLeft.x < guideFinderBottomLeft.x &&
@@ -276,7 +270,6 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   }
 
   if (numBottomEnd > 0 && numRightEnd > 0) {
-    cornerCount++;
     cornerBottomRight.x = (int)((pointBottomEnd.x + pointRightEnd.x) / 2);
     cornerBottomRight.y = (int)((pointBottomEnd.y + pointRightEnd.y) / 2);
     if (cornerBottomRight.x > guideFinderBottomRight.x &&
@@ -293,23 +286,50 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     cornerBottomRight = {-1, -1, 0};
   }
 
+  // add corners to queue in order of TL, TR, BL, BR
+  cornersQueue.push_back(
+      {cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight});
+
+  // remove the oldest set of corners from the queue
+  if (cornersQueue.size() > params.maxQueueSize) {
+    cornersQueue.pop_front();
+  }
+
+  // get the average of the corners
+  int cornerCount = 0;
+
+  for (int i = 0; i < 4; i++) {
+    float num = 0, sumX = 0, sumY = 0, sumScore = 0;
+    for (auto queueCorner = cornersQueue.crbegin();
+         queueCorner != cornersQueue.crend(); queueCorner++) {
+      if (queueCorner->at(i).x != -1 && queueCorner->at(i).y != -1) {
+        sumX += queueCorner->at(i).x;
+        sumY += queueCorner->at(i).y;
+        sumScore += queueCorner->at(i).score;
+        num++;
+      }
+    }
+
+    if (num > 0) {
+      averageCorners[i].x = (int)(sumX / num);
+      averageCorners[i].y = (int)(sumY / num);
+      averageCorners[i].score = sumScore / num;
+      cornerCount++;
+    } else {
+      averageCorners[i] = {-1, -1, 0};
+    }
+  }
+
   // append the corner count and corner coordinates to an output int vector
-  vector<int> foundCorners;
+  std::vector<int> foundCorners;
+  float cornerScore = 0;
 
   foundCorners.push_back(cornerCount);
-  foundCorners.push_back(cornerTopLeft.x);
-  foundCorners.push_back(cornerTopLeft.y);
-  foundCorners.push_back(cornerTopRight.x);
-  foundCorners.push_back(cornerTopRight.y);
-  foundCorners.push_back(cornerBottomLeft.x);
-  foundCorners.push_back(cornerBottomLeft.y);
-  foundCorners.push_back(cornerBottomRight.x);
-  foundCorners.push_back(cornerBottomRight.y);
-
-  // calculate the average score of the corners
-  float cornerScore = (cornerTopLeft.score + cornerTopRight.score +
-                       cornerBottomLeft.score + cornerBottomRight.score) /
-                      4;
+  for (int i = 0; i < 4; i++) {
+    foundCorners.push_back(averageCorners[i].x);
+    foundCorners.push_back(averageCorners[i].y);
+    cornerScore += averageCorners[i].score;
+  }
 
   //// --- START OF DRAWINGS --- ////
   // draw the found lines on a blank image
@@ -442,8 +462,5 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
 
   // return the vector of found corners
   delete grayscaled;
-  return make_pair(vector<point_t>{cornerTopLeft, cornerTopRight,
-                                   cornerBottomLeft, cornerBottomRight},
-                   cornerCount);
-  // return make_pair(foundCorners, (int)(cornerScore * 100));
+  return make_pair(foundCorners, (int)(cornerScore / 4 * 100));
 }

@@ -18,7 +18,7 @@
     - [Currently: Use OpenCV as is](#currently-use-opencv-as-is)
     - [Replace OpenCV functions with custom implementation](#replace-opencv-functions-with-custom-implementation)
     - [Train a small NN model to classify a valid image (3 corners detected)](#train-a-small-nn-model-to-classify-a-valid-image-3-corners-detected)
-- [Tuneable Parameters](#tuneable-parameters)
+- [Streamlined Tuneable Parameters](#streamlined-tuneable-parameters)
 - [Model Performance Evaluation](#model-performance-evaluation)
 - [Sources](#sources)
   - [Competitor Research](#competitor-research)
@@ -154,13 +154,13 @@ Since the rest of the steps in the Auto Capture pipeline (Card Type/Flip and Qua
 ```cpp
 struct {
     float resizedWidth = 300;        // new width of sized down image
-    float detectionAreaRatio = 0.08; // ratio of detection area to image area
-    float sigma = 3;                 // higher sigma for more gaussian blur
+    float detectionAreaRatio = 0.10; // ratio of detection area to image area
+    float sigma = 2;                 // higher sigma for more gaussian blur
     int cannyLowerThreshold = 20;    // reject if pixel gradient below threshold
     int cannyUpperThreshold = 25;    // accept if pixel gradient above threshold
     int houghlineThreshold = 50;     // minimum intersections to detect a line
-    float houghlineMinLineLengthRatio = 0.30; // min length of line to detect
-    float houghlineMaxLineGapRatio = 0.30; // max gap between 2 potential lines
+    float houghlineMinLineLengthRatio = 0.40; // min length of line to detect
+    float houghlineMaxLineGapRatio = 0.20; // max gap between 2 potential lines
 } params;
 ```
 

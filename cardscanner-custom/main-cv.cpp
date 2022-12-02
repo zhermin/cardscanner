@@ -14,22 +14,19 @@ int DEBUG = 0;
 int main() {
   // $ clear && make opencv && ./main-cv.o
 
-  string app_name = "Card Scanner";
+  string appName = "Card Scanner";
 
   // Load camera or video using OpenCV
   VideoCapture cap;
-  cap.open(1);
+  cap.open(0);
 
   Mat img;
 
-  // Calculate number of frames to wait for valid frames
-  int valid_frames = 0;
-
-  cout << "Initialized " << app_name << "! Press ESC to quit" << endl;
+  cout << "Initialized " << appName << "! Press ESC to quit" << endl;
   int i = 0;
 
   while (1) {
-    i++;
+    // i++; // Uncomment and change to while (i < 1) to capture only 1 frame
 
     // Read frame from camera or video
     cap.read(img);
@@ -44,9 +41,9 @@ int main() {
     Mat rgba;
     cvtColor(img, rgba, COLOR_BGR2RGBA);
 
-    // Crop image to 480 x 301 for frame and 440 x 277 from center
+    // Crop image to 440 x 277 from center for the guideview
     int guideW = 440, guideH = 277;
-    int frameW = guideW + 20, frameH = guideH + 6;
+    int frameW = guideW + 20, frameH = guideH + 12;
 
     Mat cropped, guideview;
     rgba(Rect(camW / 2 - frameW / 2, camH / 2 - frameH / 2, frameW, frameH))
@@ -68,6 +65,31 @@ int main() {
     // imshow("Red", bgr[2]);
     // imshow("Gray", gray);
 
+    // Calculate average grayscale intensity
+    // Scalar intensity = mean(gray);
+    // float avg = intensity.val[0];
+    // cout << "Average grayscale intensity: " << avg << endl;
+
+    // // Plot the grayscale histogram
+    // int histSize = 256;
+    // float range[] = {0, 256};
+    // const float *histRange = {range};
+    // bool uniform = true, accumulate = false;
+    // Mat hist;
+    // calcHist(&gray, 1, 0, Mat(), hist, 1, &histSize, &histRange, uniform,
+    //          accumulate);
+    // int hist_w = 512, hist_h = 400;
+    // int bin_w = cvRound((double)hist_w / histSize);
+    // Mat histImage(hist_h, hist_w, CV_8UC1, Scalar(0, 0, 0));
+    // normalize(hist, hist, 0, histImage.rows, NORM_MINMAX, -1, Mat());
+    // for (int i = 1; i < histSize; i++) {
+    //   line(histImage,
+    //        Point(bin_w * (i - 1), hist_h - cvRound(hist.at<float>(i - 1))),
+    //        Point(bin_w * (i), hist_h - cvRound(hist.at<float>(i))),
+    //        Scalar(255, 0, 0), 2, 8, 0);
+    // }
+    // imshow("Histogram", histImage);
+
     // Gaussian blur
     // Mat blurred;
     // GaussianBlur(gray, blurred, Size(0, 0), 1.5);
@@ -78,16 +100,14 @@ int main() {
     // imshow("Threshold", thresh);
 
     // Get the corners
-    auto corners_cornerCount = cardCornerDetector.getCorners(
-        cropped.data, frameW, frameH, guideW, guideH);
+    auto result = cardCornerDetector.getCorners(cropped.data, frameW, frameH,
+                                                guideW, guideH);
 
-    vector<point_t> corners = corners_cornerCount.first;
-    int cornerCount = corners_cornerCount.second;
+    auto corners = result.first;
+    int cornerCount = corners[0];
+    auto cornerScore = result.second;
 
     // Print number of corners found (score > 0)
-    int cornerScore = (corners[0].score + corners[1].score + corners[2].score +
-                       corners[3].score) /
-                      4 * 100;
     if (cornerCount >= 3) {
       cout << "[" << cornerScore << "] " << cornerCount << " corners found!"
            << endl;
@@ -97,9 +117,10 @@ int main() {
 
     // Draw the corners on the cropped and guideview image using OpenCV
     for (int i = 0; i < 4; i++) {
-      point_t c = corners[i];
-      if (c.score > 0) {
-        circle(croppedBGR, Point(c.x, c.y), 5, Scalar(0, 0, 255), -1);
+      int x = corners[1 + i * 2];
+      int y = corners[1 + i * 2 + 1];
+      if (x != -1 && y != -1) {
+        circle(croppedBGR, Point(x, y), 5, Scalar(0, 0, 255), -1);
       }
     }
 
@@ -109,7 +130,7 @@ int main() {
 
     // Press ESC on keyboard to exit
     if (waitKey(1) == 27) {
-      cout << "Shutting down " << app_name << endl;
+      cout << "Shutting down " << appName << endl;
       cap.release();
       break;
     };
