@@ -1,3 +1,5 @@
+// $ clear && make opencv && ./main-cv.o
+
 #include "card_corner_detector.h"
 #include "houghlines/houghlines.h"
 #include <iostream>
@@ -9,11 +11,7 @@ using namespace cv;
 using namespace std;
 CardCornerDetector cardCornerDetector;
 
-int DEBUG = 0;
-
 int main() {
-  // $ clear && make opencv && ./main-cv.o
-
   string appName = "Card Scanner";
 
   // Load camera or video using OpenCV
@@ -35,25 +33,32 @@ int main() {
       break;
     }
 
-    float camH = img.rows, camW = img.cols;
+    float camHeight = img.rows, camWidth = img.cols;
 
     // Convert to RGBA (format from Android)
     Mat rgba;
     cvtColor(img, rgba, COLOR_BGR2RGBA);
 
     // Crop image to 440 x 277 from center for the guideview
-    int guideW = 440, guideH = 277;
-    int frameW = guideW + 20, frameH = guideH + 12;
+    int guideFinderWidth = 440, guideFinderHeight = 277;
+    int frameWidth = guideFinderWidth + 20,
+        frameHeight = guideFinderHeight + 12;
 
     Mat cropped, guideview;
-    rgba(Rect(camW / 2 - frameW / 2, camH / 2 - frameH / 2, frameW, frameH))
+    rgba(Rect(camWidth / 2 - frameWidth / 2, camHeight / 2 - frameHeight / 2,
+              frameWidth, frameHeight))
         .copyTo(cropped);
-    rgba(Rect(camW / 2 - guideW / 2, camH / 2 - guideH / 2, guideW, guideH))
+    rgba(Rect(camWidth / 2 - guideFinderWidth / 2,
+              camHeight / 2 - guideFinderHeight / 2, guideFinderWidth,
+              guideFinderHeight))
         .copyTo(guideview);
 
     Mat croppedBGR, guideviewBGR;
     cvtColor(cropped, croppedBGR, COLOR_RGBA2BGR);
     cvtColor(guideview, guideviewBGR, COLOR_RGBA2BGR);
+
+    /* OpenCV Experiments: RGB Channels, Average Grayscale Intensity, Histogram,
+    Gaussian Blur, Otsu Thresholding, etc. */
 
     // Display RGB channels separately
     // Mat gray;
@@ -100,8 +105,9 @@ int main() {
     // imshow("Threshold", thresh);
 
     // Get the corners
-    auto result = cardCornerDetector.getCorners(cropped.data, frameW, frameH,
-                                                guideW, guideH);
+    auto result =
+        cardCornerDetector.getCorners(cropped.data, frameWidth, frameHeight,
+                                      guideFinderWidth, guideFinderHeight);
 
     auto corners = result.first;
     int cornerCount = corners[0];
@@ -115,20 +121,107 @@ int main() {
       cout << "[" << cornerScore << "] " << cornerCount << endl;
     }
 
-    // Draw the corners on the cropped and guideview image using OpenCV
+    // Calculate the guideview and detection corners
+    int guideFinderGapX = (frameWidth - guideFinderWidth) / 2;
+    int guideFinderGapY = (frameHeight - guideFinderHeight) / 2;
+
+    point_t guideFinderTopLeft = {guideFinderGapX, guideFinderGapY};
+    point_t guideFinderTopRight = {frameWidth - guideFinderGapX,
+                                   guideFinderGapY};
+    point_t guideFinderBottomLeft = {guideFinderGapX,
+                                     frameHeight - guideFinderGapY};
+    point_t guideFinderBottomRight = {frameWidth - guideFinderGapX,
+                                      frameHeight - guideFinderGapY};
+
+    float detectionArea =
+        (float)frameWidth * cardCornerDetector.params.detectionAreaRatio;
+
+    point_t detectionTopLeft = {(int)detectionArea, (int)detectionArea};
+    point_t detectionTopRight = {(int)(frameWidth - detectionArea),
+                                 (int)detectionArea};
+    point_t detectionBottomLeft = {(int)detectionArea,
+                                   (int)(frameHeight - detectionArea)};
+    point_t detectionBottomRight = {(int)(frameWidth - detectionArea),
+                                    (int)(frameHeight - detectionArea)};
+
+    // Retrieve all the found lines
+    vector<line_float_t> allLines = cardCornerDetector.getAllLines();
+    std::vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
+
+    for (auto line : allLines) {
+      if (line.startx < detectionArea && line.endx < detectionArea) {
+        linesLeft.push_back(line);
+      } else if (line.startx > (float)frameWidth - detectionArea &&
+                 line.endx > (float)frameWidth - detectionArea) {
+        linesRight.push_back(line);
+      } else if (line.starty < detectionArea && line.endy < detectionArea) {
+        linesTop.push_back(line);
+      } else if (line.starty > (float)frameHeight - detectionArea &&
+                 line.endy > (float)frameHeight - detectionArea) {
+        linesBottom.push_back(line);
+      }
+    }
+
+    // Combine the filtered region lines
+    vector<line_float_t> filteredLines;
+    filteredLines.insert(filteredLines.end(), linesTop.begin(), linesTop.end());
+    filteredLines.insert(filteredLines.end(), linesBottom.begin(),
+                         linesBottom.end());
+    filteredLines.insert(filteredLines.end(), linesLeft.begin(),
+                         linesLeft.end());
+    filteredLines.insert(filteredLines.end(), linesRight.begin(),
+                         linesRight.end());
+
+    //--- BEGIN DRAWING ---//
+
+    // Draw on a new image either all the lines or the filtered lines
+    vector<line_float_t> linesToDraw = filteredLines;
+
+    Mat linesImg = Mat::zeros(croppedBGR.size(), CV_8UC3);
+    for (int i = 0; i < linesToDraw.size(); i++) {
+      line(linesImg, Point(linesToDraw[i].startx, linesToDraw[i].starty),
+           Point(linesToDraw[i].endx, linesToDraw[i].endy),
+           Scalar(255, 255, 255), 1, LINE_AA);
+    }
+
+    // Draw the guideview corners
+    circle(linesImg, Point(guideFinderTopLeft.x, guideFinderTopLeft.y), 1,
+           Scalar(0, 255, 0), -1);
+    circle(linesImg, Point(guideFinderTopRight.x, guideFinderTopRight.y), 1,
+           Scalar(0, 255, 0), -1);
+    circle(linesImg, Point(guideFinderBottomLeft.x, guideFinderBottomLeft.y), 1,
+           Scalar(0, 255, 0), -1);
+    circle(linesImg, Point(guideFinderBottomRight.x, guideFinderBottomRight.y),
+           1, Scalar(0, 255, 0), -1);
+
+    // Draw the detection corners
+    circle(linesImg, Point(detectionTopLeft.x, detectionTopLeft.y), 1,
+           Scalar(0, 255, 0), -1);
+    circle(linesImg, Point(detectionTopRight.x, detectionTopRight.y), 1,
+           Scalar(0, 255, 0), -1);
+    circle(linesImg, Point(detectionBottomLeft.x, detectionBottomLeft.y), 1,
+           Scalar(0, 255, 0), -1);
+    circle(linesImg, Point(detectionBottomRight.x, detectionBottomRight.y), 1,
+           Scalar(0, 255, 0), -1);
+
+    // Draw the corners on the cropped and guideview image
     for (int i = 0; i < 4; i++) {
       int x = corners[1 + i * 2];
       int y = corners[1 + i * 2 + 1];
       if (x != -1 && y != -1) {
         circle(croppedBGR, Point(x, y), 5, Scalar(0, 0, 255), -1);
+        circle(linesImg, Point(x, y), 3, Scalar(0, 0, 255), -1);
       }
     }
 
-    // Display the images using OpenCV
+    //--- END DRAWING ---//
+
+    // Display the images
     imshow("guideview", guideviewBGR);
     imshow("cropped", croppedBGR);
+    imshow("lines", linesImg);
 
-    // Press ESC on keyboard to exit
+    // Press ESC on the keyboard to exit
     if (waitKey(1) == 27) {
       cout << "Shutting down " << appName << endl;
       cap.release();

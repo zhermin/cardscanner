@@ -1,15 +1,11 @@
+//
+// Created by Zac Tam Zher Min.
+//
+
 #include "card_corner_detector.h"
 #include "houghlines/houghlines.h"
 #include "utils.h"
-
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/imgproc.hpp>
-
-// #include <android/log.h>
-// #define TAG "AUTO_CAPTURE_PROCESSOR"
-// #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-// #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+#include <iostream>
 
 line_float_t CardCornerDetector::flipLine(line_float_t line) {
   float temp = line.startx;
@@ -21,8 +17,42 @@ line_float_t CardCornerDetector::flipLine(line_float_t line) {
   return line;
 }
 
+std::pair<int, point_t> CardCornerDetector::getRunningAvgEdge(float x, float y,
+                                                              int num,
+                                                              point_t point) {
+
+  if (num == 0) {
+    point = {(int)x, (int)y, 0};
+  } else {
+    point.x = (point.x * num + (int)x) / (num + 1);
+    point.y = (point.y * num + (int)y) / (num + 1);
+  }
+
+  return std::make_pair(num + 1, point);
+}
+
 float CardCornerDetector::distance(point_t p1, point_t p2) {
-  return (float)sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+  // no need to root the distance as we are getting a ratio
+  return (float)(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+}
+
+point_t CardCornerDetector::getAverageCorner(int numPoint1, point_t edgePoint1,
+                                             int numPoint2, point_t edgePoint2,
+                                             point_t guideFinderPoint,
+                                             float frameToGuideDist,
+                                             float detectionToGuideDist) {
+
+  point_t corner = {-1, -1, 0};
+  if (numPoint1 == 0 || numPoint2 == 0) {
+    return corner;
+  }
+
+  corner.x = (int)((edgePoint1.x + edgePoint2.x) / 2);
+  corner.y = (int)((edgePoint1.y + edgePoint2.y) / 2);
+  float cornerDist = distance(corner, guideFinderPoint);
+  corner.score = 1 - std::min(cornerDist / frameToGuideDist,
+                              cornerDist / detectionToGuideDist);
+  return corner;
 }
 
 std::pair<std::vector<int>, int>
@@ -33,12 +63,8 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   auto grayscaled = Utils::grayscale(frameByteArray, frameWidth, frameHeight);
 
   // initialize lines vector and bounding box
-  std::vector<line_float_t> lines;
-  boundingbox_t bbox;
-  bbox.x = 0;
-  bbox.y = 0;
-  bbox.width = frameWidth;
-  bbox.height = frameHeight;
+  allLines.clear();
+  boundingbox_t bbox = {0, 0, frameWidth, frameHeight};
 
   // calculate scale factor
   float scale = params.resizedWidth / (float)frameWidth;
@@ -49,35 +75,28 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
       params.cannyLowerThreshold, params.cannyUpperThreshold, 1, PI / 180,
       params.houghlineMinLineLengthRatio * params.resizedWidth,
       params.houghlineMaxLineGapRatio * params.resizedWidth,
-      params.houghlineThreshold, HOUGH_LINE_PROBABILISTIC, bbox, lines);
+      params.houghlineThreshold, HOUGH_LINE_PROBABILISTIC, bbox, allLines);
 
-  // only keep the lines in the detection regions (top, bottom, left, right)
+  // only keep the lines in the detection regions (left, right, top, bottom)
   float detectionArea = (float)frameWidth * params.detectionAreaRatio;
   float detectionAreaRight = (float)frameWidth - detectionArea;
   float detectionAreaBottom = (float)frameHeight - detectionArea;
 
   std::vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
 
-  for (auto line : lines) {
+  for (auto line : allLines) {
     if (line.startx < detectionArea && line.endx < detectionArea) {
       linesLeft.push_back(line);
-    } else if (line.startx > frameWidth - detectionArea &&
-               line.endx > frameWidth - detectionArea) {
+    } else if (line.startx > (float)frameWidth - detectionArea &&
+               line.endx > (float)frameWidth - detectionArea) {
       linesRight.push_back(line);
     } else if (line.starty < detectionArea && line.endy < detectionArea) {
       linesTop.push_back(line);
-    } else if (line.starty > frameHeight - detectionArea &&
-               line.endy > frameHeight - detectionArea) {
+    } else if (line.starty > (float)frameHeight - detectionArea &&
+               line.endy > (float)frameHeight - detectionArea) {
       linesBottom.push_back(line);
     }
   }
-
-  // combine the region lines
-  std::vector<line_float_t> foundLines;
-  foundLines.insert(foundLines.end(), linesTop.begin(), linesTop.end());
-  foundLines.insert(foundLines.end(), linesBottom.begin(), linesBottom.end());
-  foundLines.insert(foundLines.end(), linesLeft.begin(), linesLeft.end());
-  foundLines.insert(foundLines.end(), linesRight.begin(), linesRight.end());
 
   // check in all 4 corners for points that are within the detection area
   // and save the running average of the x and y coordinates
@@ -88,116 +107,58 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
       numLeftStart = 0, numLeftEnd = 0, numRightStart = 0, numRightEnd = 0;
 
   for (auto line : linesTop) {
-    if (line.startx > line.endx)
+    if (line.startx > line.endx) {
       line = flipLine(line);
+    }
     if (line.startx <= detectionArea && line.starty <= detectionArea) {
-      if (numTopStart == 0) {
-        pointTopStart = {(int)line.startx, (int)line.starty, 0};
-      } else {
-        pointTopStart.x = (pointTopStart.x * numTopStart + (int)line.startx) /
-                          (numTopStart + 1);
-        pointTopStart.y = (pointTopStart.y * numTopStart + (int)line.starty) /
-                          (numTopStart + 1);
-      }
-      numTopStart++;
+      std::tie(numTopStart, pointTopStart) = getRunningAvgEdge(
+          line.startx, line.starty, numTopStart, pointTopStart);
     }
     if (line.endx >= detectionAreaRight && line.endy <= detectionArea) {
-      if (numTopEnd == 0) {
-        pointTopEnd = {(int)line.endx, (int)line.endy, 0};
-      } else {
-        pointTopEnd.x =
-            (pointTopEnd.x * numTopEnd + (int)line.endx) / (numTopEnd + 1);
-        pointTopEnd.y =
-            (pointTopEnd.y * numTopEnd + (int)line.endy) / (numTopEnd + 1);
-      }
-      numTopEnd++;
+      std::tie(numTopEnd, pointTopEnd) =
+          getRunningAvgEdge(line.endx, line.endy, numTopEnd, pointTopEnd);
     }
   }
 
   for (auto line : linesBottom) {
-    if (line.startx > line.endx)
+    if (line.startx > line.endx) {
       line = flipLine(line);
+    }
     if (line.startx <= detectionArea && line.starty >= detectionAreaBottom) {
-      if (numBottomStart == 0) {
-        pointBottomStart = {(int)line.startx, (int)line.starty, 0};
-      } else {
-        pointBottomStart.x =
-            (pointBottomStart.x * numBottomStart + (int)line.startx) /
-            (numBottomStart + 1);
-        pointBottomStart.y =
-            (pointBottomStart.y * numBottomStart + (int)line.starty) /
-            (numBottomStart + 1);
-      }
-      numBottomStart++;
+      std::tie(numBottomStart, pointBottomStart) = getRunningAvgEdge(
+          line.startx, line.starty, numBottomStart, pointBottomStart);
     }
     if (line.endx >= detectionAreaRight && line.endy >= detectionAreaBottom) {
-      if (numBottomEnd == 0) {
-        pointBottomEnd = {(int)line.endx, (int)line.endy, 0};
-      } else {
-        pointBottomEnd.x = (pointBottomEnd.x * numBottomEnd + (int)line.endx) /
-                           (numBottomEnd + 1);
-        pointBottomEnd.y = (pointBottomEnd.y * numBottomEnd + (int)line.endy) /
-                           (numBottomEnd + 1);
-      }
-      numBottomEnd++;
+      std::tie(numBottomEnd, pointBottomEnd) =
+          getRunningAvgEdge(line.endx, line.endy, numBottomEnd, pointBottomEnd);
     }
   }
 
   for (auto line : linesLeft) {
-    if (line.starty > line.endy)
+    if (line.starty > line.endy) {
       line = flipLine(line);
+    }
     if (line.startx <= detectionArea && line.starty <= detectionArea) {
-      if (numLeftStart == 0) {
-        pointLeftStart = {(int)line.startx, (int)line.starty, 0};
-      } else {
-        pointLeftStart.x =
-            (pointLeftStart.x * numLeftStart + (int)line.startx) /
-            (numLeftStart + 1);
-        pointLeftStart.y =
-            (pointLeftStart.y * numLeftStart + (int)line.starty) /
-            (numLeftStart + 1);
-      }
-      numLeftStart++;
+      std::tie(numLeftStart, pointLeftStart) = getRunningAvgEdge(
+          line.startx, line.starty, numLeftStart, pointLeftStart);
     }
     if (line.endx <= detectionArea && line.endy >= detectionAreaBottom) {
-      if (numLeftEnd == 0) {
-        pointLeftEnd = {(int)line.endx, (int)line.endy, 0};
-      } else {
-        pointLeftEnd.x =
-            (pointLeftEnd.x * numLeftEnd + (int)line.endx) / (numLeftEnd + 1);
-        pointLeftEnd.y =
-            (pointLeftEnd.y * numLeftEnd + (int)line.endy) / (numLeftEnd + 1);
-      }
-      numLeftEnd++;
+      std::tie(numLeftEnd, pointLeftEnd) =
+          getRunningAvgEdge(line.endx, line.endy, numLeftEnd, pointLeftEnd);
     }
   }
 
   for (auto line : linesRight) {
-    if (line.starty > line.endy)
+    if (line.starty > line.endy) {
       line = flipLine(line);
+    }
     if (line.startx >= detectionAreaRight && line.starty <= detectionArea) {
-      if (numRightStart == 0) {
-        pointRightStart = {(int)line.startx, (int)line.starty, 0};
-      } else {
-        pointRightStart.x =
-            (pointRightStart.x * numRightStart + (int)line.startx) /
-            (numRightStart + 1);
-        pointRightStart.y =
-            (pointRightStart.y * numRightStart + (int)line.starty) /
-            (numRightStart + 1);
-      }
-      numRightStart++;
+      std::tie(numRightStart, pointRightStart) = getRunningAvgEdge(
+          line.startx, line.starty, numRightStart, pointRightStart);
     }
     if (line.endx >= detectionAreaRight && line.endy >= detectionAreaBottom) {
-      if (numRightEnd == 0) {
-        pointRightEnd = {(int)line.endx, (int)line.endy, 0};
-      } else {
-        pointRightEnd.x = (pointRightEnd.x * numRightEnd + (int)line.endx) /
-                          (numRightEnd + 1);
-        pointRightEnd.y = (pointRightEnd.y * numRightEnd + (int)line.endy) /
-                          (numRightEnd + 1);
-      }
-      numRightEnd++;
+      std::tie(numRightEnd, pointRightEnd) =
+          getRunningAvgEdge(line.endx, line.endy, numRightEnd, pointRightEnd);
     }
   }
 
@@ -207,95 +168,39 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
 
   point_t guideFinderTopLeft = {guideFinderGapX, guideFinderGapY};
   point_t guideFinderTopRight = {frameWidth - guideFinderGapX, guideFinderGapY};
-  point_t guideFinderBottomLeft = {guideFinderGapX,
-                                   frameHeight - guideFinderGapY};
   point_t guideFinderBottomRight = {frameWidth - guideFinderGapX,
                                     frameHeight - guideFinderGapY};
+  point_t guideFinderBottomLeft = {guideFinderGapX,
+                                   frameHeight - guideFinderGapY};
 
   point_t detectionTopLeft = {(int)detectionArea, (int)detectionArea};
-  point_t detectionTopRight = {(int)(frameWidth - detectionArea),
-                               (int)detectionArea};
-  point_t detectionBottomLeft = {(int)detectionArea,
-                                 (int)(frameHeight - detectionArea)};
-  point_t detectionBottomRight = {(int)(frameWidth - detectionArea),
-                                  (int)(frameHeight - detectionArea)};
 
   float frameToGuideDist = distance(point_t{0, 0}, guideFinderTopLeft);
   float detectionToGuideDist = distance(detectionTopLeft, guideFinderTopLeft);
 
   // the corner points are the average of the 2 edge points if they exist
-  point_t cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight;
+  point_t cornerTopLeft = getAverageCorner(
+      numTopStart, pointTopStart, numLeftStart, pointLeftStart,
+      guideFinderTopLeft, frameToGuideDist, detectionToGuideDist);
 
-  if (numTopStart > 0 && numLeftStart > 0) {
-    cornerTopLeft.x = (int)((pointTopStart.x + pointLeftStart.x) / 2);
-    cornerTopLeft.y = (int)((pointTopStart.y + pointLeftStart.y) / 2);
-    if (cornerTopLeft.x < guideFinderTopLeft.x &&
-        cornerTopLeft.y < guideFinderTopLeft.y) {
-      cornerTopLeft.score =
-          1 - distance(cornerTopLeft, guideFinderTopLeft) / frameToGuideDist;
-    } else {
-      cornerTopLeft.score = 1 - distance(cornerTopLeft, guideFinderTopLeft) /
-                                    detectionToGuideDist;
-    }
-  } else {
-    cornerTopLeft = {-1, -1, 0};
-  }
+  point_t cornerTopRight = getAverageCorner(
+      numTopEnd, pointTopEnd, numRightStart, pointRightStart,
+      guideFinderTopRight, frameToGuideDist, detectionToGuideDist);
 
-  if (numTopEnd > 0 && numRightStart > 0) {
-    cornerTopRight.x = (int)((pointTopEnd.x + pointRightStart.x) / 2);
-    cornerTopRight.y = (int)((pointTopEnd.y + pointRightStart.y) / 2);
-    if (cornerTopRight.x > guideFinderTopRight.x &&
-        cornerTopRight.y < guideFinderTopRight.y) {
-      cornerTopRight.score =
-          1 - distance(cornerTopRight, guideFinderTopRight) / frameToGuideDist;
-    } else {
-      cornerTopRight.score = 1 - distance(cornerTopRight, guideFinderTopRight) /
-                                     detectionToGuideDist;
-    }
-  } else {
-    cornerTopRight = {-1, -1, 0};
-  }
+  point_t cornerBottomRight = getAverageCorner(
+      numBottomEnd, pointBottomEnd, numRightEnd, pointRightEnd,
+      guideFinderBottomRight, frameToGuideDist, detectionToGuideDist);
 
-  if (numBottomStart > 0 && numLeftEnd > 0) {
-    cornerBottomLeft.x = (int)((pointBottomStart.x + pointLeftEnd.x) / 2);
-    cornerBottomLeft.y = (int)((pointBottomStart.y + pointLeftEnd.y) / 2);
-    if (cornerBottomLeft.x < guideFinderBottomLeft.x &&
-        cornerBottomLeft.y > guideFinderBottomLeft.y) {
-      cornerBottomLeft.score =
-          1 -
-          distance(cornerBottomLeft, guideFinderBottomLeft) / frameToGuideDist;
-    } else {
-      cornerBottomLeft.score =
-          1 - distance(cornerBottomLeft, guideFinderBottomLeft) /
-                  detectionToGuideDist;
-    }
-  } else {
-    cornerBottomLeft = {-1, -1, 0};
-  }
+  point_t cornerBottomLeft = getAverageCorner(
+      numBottomStart, pointBottomStart, numLeftEnd, pointLeftEnd,
+      guideFinderBottomLeft, frameToGuideDist, detectionToGuideDist);
 
-  if (numBottomEnd > 0 && numRightEnd > 0) {
-    cornerBottomRight.x = (int)((pointBottomEnd.x + pointRightEnd.x) / 2);
-    cornerBottomRight.y = (int)((pointBottomEnd.y + pointRightEnd.y) / 2);
-    if (cornerBottomRight.x > guideFinderBottomRight.x &&
-        cornerBottomRight.y > guideFinderBottomRight.y) {
-      cornerBottomRight.score =
-          1 - distance(cornerBottomRight, guideFinderBottomRight) /
-                  frameToGuideDist;
-    } else {
-      cornerBottomRight.score =
-          1 - distance(cornerBottomRight, guideFinderBottomRight) /
-                  detectionToGuideDist;
-    }
-  } else {
-    cornerBottomRight = {-1, -1, 0};
-  }
-
-  // add corners to queue in order of TL, TR, BL, BR
+  // add corners to queue in order of TL, TR, BR, BL
   cornersQueue.push_back(
-      {cornerTopLeft, cornerTopRight, cornerBottomLeft, cornerBottomRight});
+      {cornerTopLeft, cornerTopRight, cornerBottomRight, cornerBottomLeft});
 
   // remove the oldest set of corners from the queue
-  if (cornersQueue.size() > params.maxQueueSize) {
+  if (cornersQueue.size() > params.queueSize) {
     cornersQueue.pop_front();
   }
 
@@ -307,17 +212,16 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     for (auto queueCorner = cornersQueue.crbegin();
          queueCorner != cornersQueue.crend(); queueCorner++) {
       if (queueCorner->at(i).x != -1 && queueCorner->at(i).y != -1) {
-        sumX += queueCorner->at(i).x;
-        sumY += queueCorner->at(i).y;
+        sumX += (float)queueCorner->at(i).x;
+        sumY += (float)queueCorner->at(i).y;
         sumScore += queueCorner->at(i).score;
         num++;
       }
     }
 
     if (num > 0) {
-      averageCorners[i].x = (int)(sumX / num);
-      averageCorners[i].y = (int)(sumY / num);
-      averageCorners[i].score = sumScore / num;
+      averageCorners[i] = {(int)(sumX / num), (int)(sumY / num),
+                           sumScore / num};
       cornerCount++;
     } else {
       averageCorners[i] = {-1, -1, 0};
@@ -334,135 +238,6 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     foundCorners.push_back(averageCorners[i].y);
     cornerScore += averageCorners[i].score;
   }
-
-  //// --- START OF DRAWINGS --- ////
-  // draw the found lines on a blank image
-  unsigned char *frameByteArrayOut =
-      new unsigned char[frameWidth * frameHeight];
-  for (int i = 0; i < frameWidth * frameHeight; i++) {
-    frameByteArrayOut[i] = 0;
-  }
-  for (int i = 0; i < lines.size(); i++) {
-    int x1 = lines[i].startx;
-    int y1 = lines[i].starty;
-    int x2 = lines[i].endx;
-    int y2 = lines[i].endy;
-    int dx = abs(x2 - x1);
-    int dy = abs(y2 - y1);
-    int sx = x1 < x2 ? 1 : -1;
-    int sy = y1 < y2 ? 1 : -1;
-    int err = dx - dy;
-    while (true) {
-      frameByteArrayOut[y1 * frameWidth + x1] = 255;
-      if (x1 == x2 && y1 == y2) {
-        break;
-      }
-      int e2 = 2 * err;
-      if (e2 > -dy) {
-        err -= dy;
-        x1 += sx;
-      }
-      if (e2 < dx) {
-        err += dx;
-        y1 += sy;
-      }
-    }
-  }
-
-  // draw the four corners
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      int x = cornerTopLeft.x;
-      int y = cornerTopLeft.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 255;
-      }
-      x = cornerTopRight.x;
-      y = cornerTopRight.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 255;
-      }
-      x = cornerBottomLeft.x;
-      y = cornerBottomLeft.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 255;
-      }
-      x = cornerBottomRight.x;
-      y = cornerBottomRight.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 255;
-      }
-    }
-  }
-
-  // draw the guide finder corners
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      int x = guideFinderTopLeft.x;
-      int y = guideFinderTopLeft.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-      x = guideFinderTopRight.x;
-      y = guideFinderTopRight.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-      x = guideFinderBottomLeft.x;
-      y = guideFinderBottomLeft.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-      x = guideFinderBottomRight.x;
-      y = guideFinderBottomRight.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-    }
-  }
-
-  // draw the detection corners
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      int x = detectionTopLeft.x;
-      int y = detectionTopLeft.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-      x = detectionTopRight.x;
-      y = detectionTopRight.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-      x = detectionBottomLeft.x;
-      y = detectionBottomLeft.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-      x = detectionBottomRight.x;
-      y = detectionBottomRight.y;
-      if (x - 2 + i >= 0 && x - 2 + i < frameWidth && y - 2 + j >= 0 &&
-          y - 2 + j < frameHeight) {
-        frameByteArrayOut[(y - 2 + j) * frameWidth + (x - 2 + i)] = 125;
-      }
-    }
-  }
-
-  // convert the unsigned char array to an opencv mat for display
-  cv::Mat frameMat(frameHeight, frameWidth, CV_8UC1, frameByteArrayOut);
-  imshow("corners", frameMat);
-  //// --- END OF DRAWINGS --- ////
 
   // return the vector of found corners
   delete grayscaled;

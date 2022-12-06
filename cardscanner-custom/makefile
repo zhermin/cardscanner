@@ -7,4 +7,5 @@ opencv:
 		card_corner_detector.cpp \
 		utils.cpp \
 		-o main-cv.o \
-		-std=c++14 `pkg-config --cflags --libs opencv4`
+		-std=c++11 \
+		`pkg-config --cflags --libs opencv4`

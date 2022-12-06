@@ -161,6 +161,7 @@ struct {
     int houghlineThreshold = 50;     // minimum intersections to detect a line
     float houghlineMinLineLengthRatio = 0.40; // min length of line to detect
     float houghlineMaxLineGapRatio = 0.20; // max gap between 2 potential lines
+    int queueSize = 3; // moving average window of consecutive frame corners
 } params;
 ```
 

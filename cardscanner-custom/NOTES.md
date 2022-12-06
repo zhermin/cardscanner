@@ -82,15 +82,38 @@ img(cv::Rect(x, y, width, height)).copyTo(cropped);
 
 # Android Development
 
-Build APK, to be found in `/app/build/outputs/apk/debug/app-debug.apk`
+## Initial Setup
+
+1. Install Android Studio
+2. SDK Manager (Near Top Right) -> Android 12 (API Level 31)
+3. SDK Tools -> Android SDK Build-Tools 33, NDK (Side by side), CMake, Android Emulator, Android SDK Platform-Tools
+4. Set Android Device to Developer Mode
+5. Enable USB Debugging on Android Device
+
+## APK Build
+
+Build APK with gradlew, to be found in `/app/build/outputs/apk/debug/app-debug.apk`
 
 ```bash
 # root folder of the project
 ./gradlew assembleDebug
 ```
 
+## Debugging
+
 View logs for crash reports while in debug mode using
 
 ```bash
 adb logcat
+```
+
+If `adb` is not found, add the Android CLI Tools to your shell profile
+
+```bash
+nano ~/.bash_profile # or ~/.zprofile
+
+export PATH=~/Library/Android/sdk/tools:$PATH
+export PATH=~/Library/Android/sdk/platform-tools:$PATH
+
+source ~/.bash_profile # or ~/.zprofile
 ```
