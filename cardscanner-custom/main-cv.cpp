@@ -175,7 +175,7 @@ int main() {
     //--- BEGIN DRAWING ---//
 
     // Draw on a new image either all the lines or the filtered lines
-    vector<line_float_t> linesToDraw = filteredLines;
+    vector<line_float_t> linesToDraw = allLines;
 
     Mat linesImg = Mat::zeros(croppedBGR.size(), CV_8UC3);
     for (int i = 0; i < linesToDraw.size(); i++) {

@@ -28,10 +28,10 @@ public:
   struct {
     float resizedWidth = 300;        // new width of sized down image
     float detectionAreaRatio = 0.10; // ratio of detection area to image area
-    float sigma = 2;                 // higher sigma for more gaussian blur
-    float cannyLowerThreshold = 20;  // reject if pixel gradient below threshold
-    float cannyUpperThreshold = 25;  // accept if pixel gradient above threshold
-    int houghlineThreshold = 50;     // minimum intersections to detect a line
+    float sigma = 1.5;               // higher sigma for more gaussian blur
+    float cannyLowerThreshold = 10;  // reject if pixel gradient below threshold
+    float cannyUpperThreshold = 20;  // accept if pixel gradient above threshold
+    int houghlineThreshold = 70;     // minimum intersections to detect a line
     float houghlineMinLineLengthRatio = 0.40; // min length of line to detect
     float houghlineMaxLineGapRatio = 0.20; // max gap between 2 potential lines
     int queueSize = 3; // moving average window of consecutive frame corners

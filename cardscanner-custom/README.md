@@ -60,6 +60,8 @@ However, the performance of the model might worsen in this version because some 
 
 ### Corner Score
 
+![v0.3 Corner Score](./assets/docs/v0.3%20Corner%20Score.png)
+
 - A corner "accuracy" score is implemented to give more granular feedback and to allow the best frame to be picked if multiple frames with 4 corners are found
 - Higher scores will be achieved if the user aligns the card as perfectly to the guided viewfinder as possible
 - The model detection zone is from the red border to the yellow border; everything inside of the yellow zone is NOT scanned
