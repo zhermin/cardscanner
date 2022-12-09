@@ -230,10 +230,10 @@ Since the rest of the steps in the Auto Capture pipeline (Card Type/Flip and Qua
 - Store set of 4 corner coordinates in a queue (deque)
 - Queue size = Sliding window size; default=3
 - Average them if found (not -1), eg. if size = 3:
-- TL.x : [2, -1, 4] → [(2+4)/2] = [3] at the end
-- TL.x : [2, -1, 4, -1, -1, -1] → [2, 2, 3, 4, 4, -1]
+  - TL.x : [2, -1, 4] → [(2+4)/2] = [3] at the end
+  - TL.x : [2, -1, 4, -1, -1, -1] → [2, 2, 3, 4, 4, -1]
 - Fix random frame drops resetting auto capture
-- Above would have caused 4/6 rejections
+  - Above would have caused 4/6 rejections
 - Also improves robustness to lighting changes and light backgrounds
 
 # Final Overall Model Architecture
