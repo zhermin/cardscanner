@@ -7,54 +7,6 @@
 #include "utils.h"
 #include <iostream>
 
-line_float_t CardCornerDetector::flipLine(line_float_t line) {
-  float temp = line.startx;
-  line.startx = line.endx;
-  line.endx = temp;
-  temp = line.starty;
-  line.starty = line.endy;
-  line.endy = temp;
-  return line;
-}
-
-std::pair<int, point_t> CardCornerDetector::getRunningAvgEdge(float x, float y,
-                                                              int num,
-                                                              point_t point) {
-
-  if (num == 0) {
-    point = {(int)x, (int)y, 0};
-  } else {
-    point.x = (point.x * num + (int)x) / (num + 1);
-    point.y = (point.y * num + (int)y) / (num + 1);
-  }
-
-  return std::make_pair(num + 1, point);
-}
-
-float CardCornerDetector::distance(point_t p1, point_t p2) {
-  // no need to root the distance as we are getting a ratio
-  return (float)(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
-}
-
-point_t CardCornerDetector::getAverageCorner(int numPoint1, point_t edgePoint1,
-                                             int numPoint2, point_t edgePoint2,
-                                             point_t guideFinderPoint,
-                                             float frameToGuideDist,
-                                             float detectionToGuideDist) {
-
-  point_t corner = {-1, -1, 0};
-  if (numPoint1 == 0 || numPoint2 == 0) {
-    return corner;
-  }
-
-  corner.x = (int)((edgePoint1.x + edgePoint2.x) / 2);
-  corner.y = (int)((edgePoint1.y + edgePoint2.y) / 2);
-  float cornerDist = distance(corner, guideFinderPoint);
-  corner.score = 1 - std::min(cornerDist / frameToGuideDist,
-                              cornerDist / detectionToGuideDist);
-  return corner;
-}
-
 std::pair<std::vector<int>, int>
 CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
                                int frameHeight, int guideFinderWidth,
@@ -62,14 +14,17 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
 
   auto grayscaled = Utils::grayscale(frameByteArray, frameWidth, frameHeight);
 
-  // initialize lines vector and bounding box
+  // clear the lines found in the previous frame and initialize bounding box
   allLines.clear();
   boundingbox_t bbox = {0, 0, frameWidth, frameHeight};
 
-  // calculate scale factor
+  // calculate downscaling factor for faster houghline detection
   float scale = params.resizedWidth / (float)frameWidth;
 
-  // use houghlines to detect lines
+  // this open-source library performs gaussian -> canny -> houghline detection
+  // gaussian for smoothing, canny for edge map, for houghline to find lines
+  // output is a vector of custom line_float_t{startx, starty, endx, endy}
+  // https://github.com/frotms/line_detector/tree/master/houghlines
   HoughLineDetector(
       grayscaled, frameWidth, frameHeight, scale, scale, params.sigma,
       params.cannyLowerThreshold, params.cannyUpperThreshold, 1, PI / 180,
@@ -77,30 +32,39 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
       params.houghlineMaxLineGapRatio * params.resizedWidth,
       params.houghlineThreshold, HOUGH_LINE_PROBABILISTIC, bbox, allLines);
 
-  // only keep the lines in the detection regions (left, right, top, bottom)
-  float detectionArea = (float)frameWidth * params.detectionAreaRatio;
-  float detectionAreaRight = (float)frameWidth - detectionArea;
-  float detectionAreaBottom = (float)frameHeight - detectionArea;
+  // only keep lines with start/end line coordinates in the 4 side regions
+  int cornerMarginX = (frameWidth - guideFinderWidth) / 2;
+  int cornerMarginY = (frameHeight - guideFinderHeight) / 2;
+
+  float detectionAreaLeft =
+      (float)cornerMarginX +
+      (float)guideFinderWidth / 2 * params.innerDetectionPercentWidth;
+  float detectionAreaTop =
+      (float)cornerMarginY +
+      (float)guideFinderHeight / 2 * params.innerDetectionPercentHeight;
+  float detectionAreaRight = (float)frameWidth - detectionAreaLeft;
+  float detectionAreaBottom = (float)frameHeight - detectionAreaTop;
 
   std::vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
 
   for (auto line : allLines) {
-    if (line.startx < detectionArea && line.endx < detectionArea) {
+    if (line.startx <= detectionAreaLeft && line.endx <= detectionAreaLeft) {
       linesLeft.push_back(line);
-    } else if (line.startx > (float)frameWidth - detectionArea &&
-               line.endx > (float)frameWidth - detectionArea) {
+    } else if (line.startx >= detectionAreaRight &&
+               line.endx >= detectionAreaRight) {
       linesRight.push_back(line);
-    } else if (line.starty < detectionArea && line.endy < detectionArea) {
+    } else if (line.starty <= detectionAreaTop &&
+               line.endy <= detectionAreaTop) {
       linesTop.push_back(line);
-    } else if (line.starty > (float)frameHeight - detectionArea &&
-               line.endy > (float)frameHeight - detectionArea) {
+    } else if (line.starty >= detectionAreaBottom &&
+               line.endy >= detectionAreaBottom) {
       linesBottom.push_back(line);
     }
   }
 
-  // check in all 4 corners for points that are within the detection area
-  // and save the running average of the x and y coordinates
-  // also orientate lines so they go from left to right and top to bottom
+  // first orientate each line to be from left to right and top to bottom
+  // each of the 4 corner regions will have 2 points contributed by 2 edges
+  // and each of the total 8 points will be the running average coordinates
   point_t pointTopStart, pointTopEnd, pointBottomStart, pointBottomEnd,
       pointLeftStart, pointLeftEnd, pointRightStart, pointRightEnd;
   int numTopStart = 0, numTopEnd = 0, numBottomStart = 0, numBottomEnd = 0,
@@ -110,13 +74,13 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     if (line.startx > line.endx) {
       line = flipLine(line);
     }
-    if (line.startx <= detectionArea && line.starty <= detectionArea) {
-      std::tie(numTopStart, pointTopStart) = getRunningAvgEdge(
+    if (line.startx <= detectionAreaLeft && line.starty <= detectionAreaTop) {
+      std::tie(numTopStart, pointTopStart) = runningAverageEdgePoint(
           line.startx, line.starty, numTopStart, pointTopStart);
     }
-    if (line.endx >= detectionAreaRight && line.endy <= detectionArea) {
+    if (line.endx >= detectionAreaRight && line.endy <= detectionAreaTop) {
       std::tie(numTopEnd, pointTopEnd) =
-          getRunningAvgEdge(line.endx, line.endy, numTopEnd, pointTopEnd);
+          runningAverageEdgePoint(line.endx, line.endy, numTopEnd, pointTopEnd);
     }
   }
 
@@ -124,13 +88,14 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     if (line.startx > line.endx) {
       line = flipLine(line);
     }
-    if (line.startx <= detectionArea && line.starty >= detectionAreaBottom) {
-      std::tie(numBottomStart, pointBottomStart) = getRunningAvgEdge(
+    if (line.startx <= detectionAreaLeft &&
+        line.starty >= detectionAreaBottom) {
+      std::tie(numBottomStart, pointBottomStart) = runningAverageEdgePoint(
           line.startx, line.starty, numBottomStart, pointBottomStart);
     }
     if (line.endx >= detectionAreaRight && line.endy >= detectionAreaBottom) {
-      std::tie(numBottomEnd, pointBottomEnd) =
-          getRunningAvgEdge(line.endx, line.endy, numBottomEnd, pointBottomEnd);
+      std::tie(numBottomEnd, pointBottomEnd) = runningAverageEdgePoint(
+          line.endx, line.endy, numBottomEnd, pointBottomEnd);
     }
   }
 
@@ -138,13 +103,13 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     if (line.starty > line.endy) {
       line = flipLine(line);
     }
-    if (line.startx <= detectionArea && line.starty <= detectionArea) {
-      std::tie(numLeftStart, pointLeftStart) = getRunningAvgEdge(
+    if (line.startx <= detectionAreaLeft && line.starty <= detectionAreaTop) {
+      std::tie(numLeftStart, pointLeftStart) = runningAverageEdgePoint(
           line.startx, line.starty, numLeftStart, pointLeftStart);
     }
-    if (line.endx <= detectionArea && line.endy >= detectionAreaBottom) {
-      std::tie(numLeftEnd, pointLeftEnd) =
-          getRunningAvgEdge(line.endx, line.endy, numLeftEnd, pointLeftEnd);
+    if (line.endx <= detectionAreaLeft && line.endy >= detectionAreaBottom) {
+      std::tie(numLeftEnd, pointLeftEnd) = runningAverageEdgePoint(
+          line.endx, line.endy, numLeftEnd, pointLeftEnd);
     }
   }
 
@@ -152,17 +117,17 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     if (line.starty > line.endy) {
       line = flipLine(line);
     }
-    if (line.startx >= detectionAreaRight && line.starty <= detectionArea) {
-      std::tie(numRightStart, pointRightStart) = getRunningAvgEdge(
+    if (line.startx >= detectionAreaRight && line.starty <= detectionAreaTop) {
+      std::tie(numRightStart, pointRightStart) = runningAverageEdgePoint(
           line.startx, line.starty, numRightStart, pointRightStart);
     }
     if (line.endx >= detectionAreaRight && line.endy >= detectionAreaBottom) {
-      std::tie(numRightEnd, pointRightEnd) =
-          getRunningAvgEdge(line.endx, line.endy, numRightEnd, pointRightEnd);
+      std::tie(numRightEnd, pointRightEnd) = runningAverageEdgePoint(
+          line.endx, line.endy, numRightEnd, pointRightEnd);
     }
   }
 
-  // store the corners of the frame and detection zones
+  // store corners of the frame and detection zones to calculate corner score
   int guideFinderGapX = (frameWidth - guideFinderWidth) / 2;
   int guideFinderGapY = (frameHeight - guideFinderHeight) / 2;
 
@@ -173,42 +138,42 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
   point_t guideFinderBottomLeft = {guideFinderGapX,
                                    frameHeight - guideFinderGapY};
 
-  point_t detectionTopLeft = {(int)detectionArea, (int)detectionArea};
+  point_t detectionTopLeft = {(int)detectionAreaLeft, (int)detectionAreaTop};
 
   float frameToGuideDist = distance(point_t{0, 0}, guideFinderTopLeft);
   float detectionToGuideDist = distance(detectionTopLeft, guideFinderTopLeft);
 
-  // the corner points are the average of the 2 edge points if they exist
-  point_t cornerTopLeft = getAverageCorner(
+  // only if both edge points found, we average the 2 points to get the corner
+  point_t cornerTopLeft = averageCornerFromEdges(
       numTopStart, pointTopStart, numLeftStart, pointLeftStart,
       guideFinderTopLeft, frameToGuideDist, detectionToGuideDist);
 
-  point_t cornerTopRight = getAverageCorner(
+  point_t cornerTopRight = averageCornerFromEdges(
       numTopEnd, pointTopEnd, numRightStart, pointRightStart,
       guideFinderTopRight, frameToGuideDist, detectionToGuideDist);
 
-  point_t cornerBottomRight = getAverageCorner(
+  point_t cornerBottomRight = averageCornerFromEdges(
       numBottomEnd, pointBottomEnd, numRightEnd, pointRightEnd,
       guideFinderBottomRight, frameToGuideDist, detectionToGuideDist);
 
-  point_t cornerBottomLeft = getAverageCorner(
+  point_t cornerBottomLeft = averageCornerFromEdges(
       numBottomStart, pointBottomStart, numLeftEnd, pointLeftEnd,
       guideFinderBottomLeft, frameToGuideDist, detectionToGuideDist);
 
-  // add corners to queue in order of TL, TR, BR, BL
+  // this set of 4 corners in the queue is considered 1 frame
   cornersQueue.push_back(
       {cornerTopLeft, cornerTopRight, cornerBottomRight, cornerBottomLeft});
 
-  // remove the oldest set of corners from the queue
   if (cornersQueue.size() > params.queueSize) {
     cornersQueue.pop_front();
   }
 
-  // get the average of the corners
+  // sliding window average of the 4 corners from the last queueSize frames
   int cornerCount = 0;
 
   for (int i = 0; i < 4; i++) {
     float num = 0, sumX = 0, sumY = 0, sumScore = 0;
+
     for (auto queueCorner = cornersQueue.crbegin();
          queueCorner != cornersQueue.crend(); queueCorner++) {
       if (queueCorner->at(i).x != -1 && queueCorner->at(i).y != -1) {
@@ -228,7 +193,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     }
   }
 
-  // append the corner count and corner coordinates to an output int vector
+  // the format of this int vector is synced up with the mobile FE side
   std::vector<int> foundCorners;
   float cornerScore = 0;
 
@@ -239,7 +204,52 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
     cornerScore += averageCorners[i].score;
   }
 
-  // return the vector of found corners
   delete grayscaled;
   return make_pair(foundCorners, (int)(cornerScore / 4 * 100));
+}
+
+line_float_t CardCornerDetector::flipLine(line_float_t line) {
+  float temp = line.startx;
+  line.startx = line.endx;
+  line.endx = temp;
+  temp = line.starty;
+  line.starty = line.endy;
+  line.endy = temp;
+  return line;
+}
+
+std::pair<int, point_t>
+CardCornerDetector::runningAverageEdgePoint(float x, float y, int num,
+                                            point_t point) {
+
+  if (num == 0) {
+    point = {(int)x, (int)y, 0};
+  } else {
+    point.x = (point.x * num + (int)x) / (num + 1);
+    point.y = (point.y * num + (int)y) / (num + 1);
+  }
+
+  return std::make_pair(num + 1, point);
+}
+
+float CardCornerDetector::distance(point_t p1, point_t p2) {
+  // no need to root the distance as we are getting a ratio
+  return (float)(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+}
+
+point_t CardCornerDetector::averageCornerFromEdges(
+    int numPoint1, point_t edgePoint1, int numPoint2, point_t edgePoint2,
+    point_t guidePoint, float frameToGuideDist, float detectionToGuideDist) {
+
+  point_t corner = {-1, -1, 0};
+  if (numPoint1 == 0 || numPoint2 == 0) {
+    return corner;
+  }
+
+  corner.x = (int)((edgePoint1.x + edgePoint2.x) / 2);
+  corner.y = (int)((edgePoint1.y + edgePoint2.y) / 2);
+  float cornerDist = distance(corner, guidePoint);
+  corner.score = 1 - std::min(cornerDist / frameToGuideDist,
+                              cornerDist / detectionToGuideDist);
+  return corner;
 }

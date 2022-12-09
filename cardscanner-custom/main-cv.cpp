@@ -15,8 +15,7 @@ int main() {
   string appName = "Card Scanner";
 
   // Load camera or video using OpenCV
-  VideoCapture cap;
-  cap.open(0);
+  VideoCapture cap(1);
 
   Mat img;
 
@@ -25,6 +24,13 @@ int main() {
 
   while (1) {
     // i++; // Uncomment and change to while (i < 1) to capture only 1 frame
+
+    // Values synced up from Mobile Frontend side
+    int guideFinderWidth = 440, guideFinderHeight = 277;
+    float extendedPercentageWidth = 0.05, extendedPercentageHeight = 0.05;
+
+    int frameWidth = guideFinderWidth * (1 + extendedPercentageWidth * 2),
+        frameHeight = guideFinderHeight * (1 + extendedPercentageHeight * 2);
 
     // Read frame from camera or video
     cap.read(img);
@@ -38,11 +44,6 @@ int main() {
     // Convert to RGBA (format from Android)
     Mat rgba;
     cvtColor(img, rgba, COLOR_BGR2RGBA);
-
-    // Crop image to 440 x 277 from center for the guideview
-    int guideFinderWidth = 440, guideFinderHeight = 277;
-    int frameWidth = guideFinderWidth + 20,
-        frameHeight = guideFinderHeight + 12;
 
     Mat cropped, guideview;
     rgba(Rect(camWidth / 2 - frameWidth / 2, camHeight / 2 - frameHeight / 2,
@@ -104,7 +105,7 @@ int main() {
     // threshold(blurred, thresh, 0, 255, THRESH_BINARY | THRESH_OTSU);
     // imshow("Threshold", thresh);
 
-    // Get the corners
+    // Get the corners in a tuple (corners, score)
     auto result =
         cardCornerDetector.getCorners(cropped.data, frameWidth, frameHeight,
                                       guideFinderWidth, guideFinderHeight);
@@ -122,42 +123,50 @@ int main() {
     }
 
     // Calculate the guideview and detection corners
-    int guideFinderGapX = (frameWidth - guideFinderWidth) / 2;
-    int guideFinderGapY = (frameHeight - guideFinderHeight) / 2;
+    int cornerMarginX = (frameWidth - guideFinderWidth) / 2;
+    int cornerMarginY = (frameHeight - guideFinderHeight) / 2;
 
-    point_t guideFinderTopLeft = {guideFinderGapX, guideFinderGapY};
-    point_t guideFinderTopRight = {frameWidth - guideFinderGapX,
-                                   guideFinderGapY};
-    point_t guideFinderBottomLeft = {guideFinderGapX,
-                                     frameHeight - guideFinderGapY};
-    point_t guideFinderBottomRight = {frameWidth - guideFinderGapX,
-                                      frameHeight - guideFinderGapY};
+    float detectionAreaLeft =
+        (float)cornerMarginX +
+        (float)guideFinderWidth / 2 *
+            cardCornerDetector.params.innerDetectionPercentWidth;
+    float detectionAreaTop =
+        (float)cornerMarginY +
+        (float)guideFinderHeight / 2 *
+            cardCornerDetector.params.innerDetectionPercentHeight;
+    float detectionAreaRight = (float)frameWidth - detectionAreaLeft;
+    float detectionAreaBottom = (float)frameHeight - detectionAreaTop;
 
-    float detectionArea =
-        (float)frameWidth * cardCornerDetector.params.detectionAreaRatio;
+    point_t guideFinderTopLeft = {cornerMarginX, cornerMarginY};
+    point_t guideFinderTopRight = {frameWidth - cornerMarginX, cornerMarginY};
+    point_t guideFinderBottomLeft = {cornerMarginX,
+                                     frameHeight - cornerMarginY};
+    point_t guideFinderBottomRight = {frameWidth - cornerMarginX,
+                                      frameHeight - cornerMarginY};
 
-    point_t detectionTopLeft = {(int)detectionArea, (int)detectionArea};
-    point_t detectionTopRight = {(int)(frameWidth - detectionArea),
-                                 (int)detectionArea};
-    point_t detectionBottomLeft = {(int)detectionArea,
-                                   (int)(frameHeight - detectionArea)};
-    point_t detectionBottomRight = {(int)(frameWidth - detectionArea),
-                                    (int)(frameHeight - detectionArea)};
+    point_t detectionTopLeft = {(int)detectionAreaLeft, (int)detectionAreaTop};
+    point_t detectionTopRight = {(int)detectionAreaRight,
+                                 (int)detectionAreaTop};
+    point_t detectionBottomLeft = {(int)detectionAreaLeft,
+                                   (int)detectionAreaBottom};
+    point_t detectionBottomRight = {(int)detectionAreaRight,
+                                    (int)detectionAreaBottom};
 
     // Retrieve all the found lines
     vector<line_float_t> allLines = cardCornerDetector.getAllLines();
     std::vector<line_float_t> linesTop, linesBottom, linesLeft, linesRight;
 
     for (auto line : allLines) {
-      if (line.startx < detectionArea && line.endx < detectionArea) {
+      if (line.startx <= detectionAreaLeft && line.endx <= detectionAreaLeft) {
         linesLeft.push_back(line);
-      } else if (line.startx > (float)frameWidth - detectionArea &&
-                 line.endx > (float)frameWidth - detectionArea) {
+      } else if (line.startx >= detectionAreaRight &&
+                 line.endx >= detectionAreaRight) {
         linesRight.push_back(line);
-      } else if (line.starty < detectionArea && line.endy < detectionArea) {
+      } else if (line.starty <= detectionAreaTop &&
+                 line.endy <= detectionAreaTop) {
         linesTop.push_back(line);
-      } else if (line.starty > (float)frameHeight - detectionArea &&
-                 line.endy > (float)frameHeight - detectionArea) {
+      } else if (line.starty >= detectionAreaBottom &&
+                 line.endy >= detectionAreaBottom) {
         linesBottom.push_back(line);
       }
     }
@@ -186,13 +195,13 @@ int main() {
 
     // Draw the guideview corners
     circle(linesImg, Point(guideFinderTopLeft.x, guideFinderTopLeft.y), 1,
-           Scalar(0, 255, 0), -1);
+           Scalar(0, 255, 255), -1);
     circle(linesImg, Point(guideFinderTopRight.x, guideFinderTopRight.y), 1,
-           Scalar(0, 255, 0), -1);
+           Scalar(0, 255, 255), -1);
     circle(linesImg, Point(guideFinderBottomLeft.x, guideFinderBottomLeft.y), 1,
-           Scalar(0, 255, 0), -1);
+           Scalar(0, 255, 255), -1);
     circle(linesImg, Point(guideFinderBottomRight.x, guideFinderBottomRight.y),
-           1, Scalar(0, 255, 0), -1);
+           1, Scalar(0, 255, 255), -1);
 
     // Draw the detection corners
     circle(linesImg, Point(detectionTopLeft.x, detectionTopLeft.y), 1,
