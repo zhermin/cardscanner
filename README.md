@@ -257,6 +257,19 @@ struct {
 } params;
 ```
 
+| Parameter                         | Configuration [default \| min \| max] | Definition                                                       | Description                                                                                                                  | How to Decrease Strictness |
+|-----------------------------------|---------------------------------------|------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|----------------------------|
+| cornerCannyLowerThreshold         | [10 \| 0 \| MAX]                      | lower pixel gradient threshold to accept                         | decreasing this will take in more details in the image (higher sensitivity, decrease strictness)                             | Decrease this              |
+| cornerCannyUpperThreshold         | [20 \| 0 \| MAX]                      | upper pixel gradient threshold to accept                         | decreasing this will also accept more details in the image (higher sensitivity), but usually higher than the lower threshold | Decrease this              |
+| cornerInnerDetectionPercentWidth  | [0.2 \| 0 \| 1.0]                     | amount of x area to allow detection within guideview             | amount of area to detect inside of guideview, controls how much user can zoom out and still detect the card                  | Increase this              |
+| cornerInnerDetectionPercentHeight | [0.3 \| 0 \| 1.0]                     | amount of y area to allow detection within guideview             | amount of area to detect inside of guideview, controls how much user can zoom out and still detect the card                  | Increase this              |
+| cornerHoughlineMaxLineGapRatio    | [0.2 \| 0 \| 1.0]                     | ratio x cornerResizedWidth                                       | increasing will cause larger gaps to be accepted and joined together to form a line                                          | Increase this              |
+| cornerHoughlineMinLineLengthRatio | [0.4 \| 0 \| 1.0]                     | ratio x cornerResizedWidth, right now it’s 300 x 0.1 = 30 pixels | decreasing will cause lines that are shorter to be accepted                                                                  | Decrease this              |
+| cornerHoughlineThreshold          | [70 \| 0 \| 300]                      | number of votes for a line to be accepted                        | decreasing this will lower the threshold to accept a line, making more lines and non-lines to be detected                    | Decrease this              |
+| cornerQueueSize                   | [3 \| 1 \| MAX]                       | size of moving average window                                    | increasing this will allow more drop frames to still be accepted but the corners will update slower                          | Increase this              |
+| cornerResizedWidth                | [300 \| 0 \| 440]                     | resize it smaller to speed up processing                         | increasing this will lose less details when downsizing the image but processing speed will be slower                         | Neutral                    |
+| cornerSigma                       | [1.5 \| 0 \| 6.0]                     | the amount of blurring done to the image                         | increasing this will affect the image smoothening but take in more noise that we might think is not there                    | Neutral                    |
+
 # Model Performance Evaluation
 
 Size: From 17MB with OpenCV to 42KB pure C++ version
