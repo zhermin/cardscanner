@@ -272,9 +272,9 @@ struct {
 
 # Model Performance Evaluation
 
-Size: From 17MB with OpenCV to 42KB pure C++ version
-Speed: Around 15-20ms
-Accuracy & Stability: Did not manage to evaluate on any benchmark dataset
+- Size: From 17MB with OpenCV to 42KB pure C++ version
+- Speed: Around 15-20ms
+- Accuracy & Stability: Did not manage to evaluate on any benchmark dataset
 
 # Sources
 
