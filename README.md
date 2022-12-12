@@ -168,7 +168,7 @@ Since the rest of the steps in the Auto Capture pipeline (Card Type/Flip and Qua
     1. Further crop and scale down the frame for faster processing
     2. The algo applies a **Gaussian blur** to reduce noise
     3. The algo then applies a **Canny edge detector** to detect edges (full details of the Canny algorithm can be found in the v0.1 TD)
-    4. I believe the algo *does not* apply a **Dilation** to thicken the edges
+    4. I believe the algo _does not_ apply a **Dilation** to thicken the edges
     5. The algo finally applies the hough line transform to find lines
 4. Check for lines
     1. Section off the image into 4 areas: left, right, top and bottom
