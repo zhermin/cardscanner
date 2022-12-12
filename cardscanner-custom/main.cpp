@@ -1,4 +1,4 @@
-// $ clear && make && ./main.o
+// $ clear && make && ./main
 
 #include "card_corner_detector.h"
 #include "houghlines/houghlines.h"

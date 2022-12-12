@@ -10,6 +10,8 @@
 class CardCornerDetector {
 
 private:
+  static unsigned char *grayscale(const unsigned char *frame, int frameWidth,
+                                  int frameHeight);
   static line_float_t flipLine(line_float_t line);
   static std::pair<int, point_t>
   runningAverageEdgePoint(float x, float y, int num, point_t point);

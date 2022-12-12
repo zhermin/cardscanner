@@ -4,7 +4,6 @@
 
 #include "card_corner_detector.h"
 #include "houghlines/houghlines.h"
-#include "utils.h"
 #include <iostream>
 
 std::pair<std::vector<int>, int>
@@ -12,7 +11,7 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
                                int frameHeight, int guideFinderWidth,
                                int guideFinderHeight) const {
 
-  auto grayscaled = Utils::grayscale(frameByteArray, frameWidth, frameHeight);
+  auto grayscaled = grayscale(frameByteArray, frameWidth, frameHeight);
 
   // clear the lines found in the previous frame and initialize bounding box
   allLines.clear();
@@ -206,6 +205,17 @@ CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
 
   delete grayscaled;
   return make_pair(foundCorners, (int)(cornerScore / 4 * 100));
+}
+
+unsigned char *CardCornerDetector::grayscale(const unsigned char *frame,
+                                             int frameWidth, int frameHeight) {
+  unsigned char *grayscaled = new unsigned char[frameWidth * frameHeight];
+  for (int i = 0; i < frameWidth * frameHeight; i++) {
+    grayscaled[i] =
+        (unsigned char)(0.299 * frame[i * 4] + 0.587 * frame[i * 4 + 1] +
+                        0.114 * frame[i * 4 + 2]);
+  }
+  return grayscaled;
 }
 
 line_float_t CardCornerDetector::flipLine(line_float_t line) {
