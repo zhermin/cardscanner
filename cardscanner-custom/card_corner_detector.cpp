@@ -4,7 +4,6 @@
 
 #include "card_corner_detector.h"
 #include "houghlines/houghlines.h"
-#include <iostream>
 
 std::pair<std::vector<int>, int>
 CardCornerDetector::getCorners(unsigned char *frameByteArray, int frameWidth,
